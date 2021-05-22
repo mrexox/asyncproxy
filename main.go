@@ -5,6 +5,7 @@ import (
 	"log"
 	"math/rand"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -12,11 +13,15 @@ import (
 	"github.com/spf13/viper"
 )
 
+type handler struct{}
+
 var (
-	webhookProxy *WebhookProxy
+	webhookProxy  *WebhookProxy
+	webhookStatus int // e.g. 200
+	webhookMethod string
 )
 
-func init() {
+func initialize() {
 	rand.Seed(time.Now().UnixNano())
 
 	log.Println("Reading config...")
@@ -36,11 +41,22 @@ func init() {
 		log.Fatal(err)
 	}
 
+	webhookStatus = viper.GetInt("webhook.return")
+	webhookMethod = viper.GetString("webhook.method")
+
+	remoteUrl, err := url.Parse(viper.GetString("proxy.remote_url"))
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	webhookProxy, err = NewWebhookProxy(
 		&WebhookProxyConfig{
-			url:            viper.GetString("proxy.notifications_url"),
-			numClients:     viper.GetInt("proxy.num_clients"),
-			requestTimeout: time.Duration(viper.GetInt("proxy.request_timeout")),
+			Method:         viper.GetString("webhook.method"),
+			RemoteHost:     remoteUrl.Host,
+			RemoteScheme:   remoteUrl.Scheme,
+			ContentType:    viper.GetString("webhook.content_type"),
+			NumClients:     viper.GetInt("proxy.num_clients"),
+			RequestTimeout: time.Duration(viper.GetInt("proxy.request_timeout")),
 		},
 	)
 	if err != nil {
@@ -49,20 +65,18 @@ func init() {
 }
 
 func main() {
+	initialize()
+
 	log.Println("Starting server...")
 
-	bind := viper.GetString("server.bind")
-	endpoint := viper.GetString("server.endpoint")
-
 	srv := &http.Server{
-		Addr:         bind,
+		Addr:         viper.GetString("server.bind"),
+		Handler:      handler{},
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 5 * time.Second,
 	}
 
 	srv.SetKeepAlivesEnabled(false)
-
-	http.HandleFunc(endpoint, notifications)
 
 	log.Fatal(srv.ListenAndServe())
 }
@@ -71,13 +85,15 @@ func generateRequestId() int {
 	return rand.Intn(10_000_000)
 }
 
-func notifications(w http.ResponseWriter, r *http.Request) {
+func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	requestId := generateRequestId()
 	r = r.WithContext(context.WithValue(r.Context(), "reqid", requestId))
 
-	log.Printf("reqid=%d, %s %s (%s)", requestId, r.Method, r.RequestURI, r.RemoteAddr)
-
-	go webhookProxy.HandleRequest(r)
-
-	w.WriteHeader(http.StatusOK)
+	log.Printf("reqid=%d, <- %s %s (%s)", requestId, r.Method, r.RequestURI, r.RemoteAddr)
+	if r.Method == webhookMethod {
+		go webhookProxy.HandleRequest(r)
+		w.WriteHeader(webhookStatus)
+	} else {
+		w.WriteHeader(http.StatusNotFound)
+	}
 }

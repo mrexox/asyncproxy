@@ -8,32 +8,34 @@ import (
 )
 
 type WebhookProxy struct {
-	url      string
 	balancer chan struct{}
 	client   *http.Client
+	*WebhookProxyConfig
 }
 
 type WebhookProxyConfig struct {
-	url            string
-	numClients     int
-	requestTimeout time.Duration
+	Method         string
+	RemoteHost     string
+	RemoteScheme   string
+	ContentType    string
+	NumClients     int
+	RequestTimeout time.Duration
 }
 
 func NewWebhookProxy(cfg *WebhookProxyConfig) (*WebhookProxy, error) {
-	log.Printf("Redirection URL: %s", cfg.url)
-
-	if cfg.numClients < 1 {
+	if cfg.NumClients < 1 {
 		return nil, fmt.Errorf("numClients must be >= 1")
 	}
 
-	log.Printf("Number of concurrent clients: %d", cfg.numClients)
+	log.Printf("Redirecting to: %s://%s", cfg.RemoteScheme, cfg.RemoteHost)
+	log.Printf("Number of concurrent clients: %d", cfg.NumClients)
 
 	return &WebhookProxy{
-		url:      cfg.url,
-		balancer: make(chan struct{}, cfg.numClients),
-		client: &http.Client{
-			Timeout: cfg.requestTimeout * time.Second,
+		make(chan struct{}, cfg.NumClients),
+		&http.Client{
+			Timeout: cfg.RequestTimeout * time.Second,
 		},
+		cfg,
 	}, nil
 }
 
@@ -50,16 +52,35 @@ func (wp *WebhookProxy) HandleRequest(r *http.Request) {
 func (wp *WebhookProxy) handle(r *http.Request) error {
 	requestId := r.Context().Value("reqid")
 
-	if r.Method != "POST" {
-		return fmt.Errorf("reqid=%d, skip (invalid method)", requestId)
+	newReq, err := wp.transform(r)
+	if err != nil {
+		return fmt.Errorf("reqid=%d, request error: %s", requestId, err)
 	}
 
-	resp, err := wp.client.Post(wp.url, "application/xml", r.Body)
+	log.Printf("reqid=%d, -> %s %s", requestId, newReq.Method, newReq.URL.String())
+
+	resp, err := wp.client.Do(newReq)
 	if err != nil {
-		return fmt.Errorf("reqid=%d, error: %s", requestId, err)
+		return fmt.Errorf("reqid=%d, response error: %s", requestId, err)
 	}
 
 	log.Printf("reqid=%d, %s", requestId, resp.Status)
 
 	return nil
+}
+
+func (wp *WebhookProxy) transform(r *http.Request) (*http.Request, error) {
+	newUrl := *r.URL
+
+	newUrl.Host = wp.RemoteHost
+	newUrl.Scheme = wp.RemoteScheme
+
+	newReq, err := http.NewRequest(wp.Method, newUrl.String(), r.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	newReq.Header.Set("Content-Type", wp.ContentType)
+
+	return newReq, nil
 }

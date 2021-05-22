@@ -11,9 +11,8 @@ func TestNewWebhookProxy(t *testing.T) {
 
 	// Success case
 	_, err = NewWebhookProxy(&WebhookProxyConfig{
-		url:            "string",
-		numClients:     400,
-		requestTimeout: 10,
+		NumClients:     2,
+		RequestTimeout: 10,
 	})
 
 	if err != nil {
@@ -22,9 +21,8 @@ func TestNewWebhookProxy(t *testing.T) {
 
 	// Wring numClients
 	_, err = NewWebhookProxy(&WebhookProxyConfig{
-		url:            "string",
-		numClients:     0,
-		requestTimeout: 10,
+		NumClients:     0,
+		RequestTimeout: 10,
 	})
 
 	if err == nil {
@@ -33,45 +31,58 @@ func TestNewWebhookProxy(t *testing.T) {
 }
 
 type MockedRoundTripper struct {
-	f func()
+	f func(r *http.Request)
 }
 
 func (m MockedRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
-	m.f()
+	m.f(r)
 	return &http.Response{Status: "200 OK"}, nil
 }
 
 func TestHandleRequest(t *testing.T) {
 	var (
-		numCalls int
-		req      *http.Request
+		checkMethod string
+		checkHost   string
+		checkScheme string
+		req         *http.Request
 	)
 
 	transport := MockedRoundTripper{
-		f: func() { numCalls += 1 },
+		func(r *http.Request) {
+			checkMethod = r.Method
+			checkHost = r.URL.Host
+			checkScheme = r.URL.Scheme
+		},
 	}
 
 	wp := &WebhookProxy{
-		url:      "string",
-		balancer: make(chan struct{}, 1),
-		client: &http.Client{
+		make(chan struct{}, 1),
+		&http.Client{
 			Transport: transport,
+		},
+		&WebhookProxyConfig{
+			Method:         "POST",
+			RemoteHost:     "localhost",
+			RemoteScheme:   "http",
+			ContentType:    "application/json",
+			NumClients:     1,
+			RequestTimeout: 10,
 		},
 	}
 
 	// POST request successfully forwarded
-	req = httptest.NewRequest("POST", "http://localhost", nil)
+	req = httptest.NewRequest("POST", "https://superhost/endpoint", nil)
 	wp.HandleRequest(req)
 
-	if numCalls != 1 {
-		t.Errorf("expected to make a POST request %d", numCalls)
+	if checkMethod != "POST" {
+		t.Errorf("expected to make a POST request")
 	}
 
-	// GET request ignored
-	req = httptest.NewRequest("GET", "http://localhost", nil)
-	wp.HandleRequest(req)
+	if checkHost != "localhost" {
+		t.Errorf("expected to change Host of the request")
+	}
 
-	if numCalls != 1 {
-		t.Errorf("expected to ignore a GET request")
+	if checkScheme != "http" {
+		t.Errorf("expected to change request scheme")
 	}
 }
