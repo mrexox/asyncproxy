@@ -1,29 +1,51 @@
 package main
 
 import (
-	"context"
 	"log"
-	"math/rand"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/viper"
 )
 
 type handler struct{}
 
 var (
-	webhookProxy  *WebhookProxy
-	webhookStatus int // e.g. 200
-	webhookMethod string
+	proxy             *Proxy
+	status            int // e.g. 200
+	method            string
+	prometheusHandler http.Handler
+	prometheusPath    string
+
+	requestsCounter = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "http_requests_total",
+		Help: "Number of requests.",
+	}, []string{"path"})
+
+	requestDurationBuckets = []float64{
+		0.001, .005, 0.01, .025, 0.05, 0.1, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300,
+	}
+
+	requestsDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "http_response_time_seconds",
+		Help:    "Response time.",
+		Buckets: requestDurationBuckets,
+	}, []string{"path"})
+
+	proxyRequestsDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    "http_proxy_response_time_seconds",
+		Help:    "Proxy request response time.",
+		Buckets: requestDurationBuckets,
+	}, []string{"path", "status"})
 )
 
 func initialize() {
-	rand.Seed(time.Now().UnixNano())
-
 	log.Println("Reading config...")
 
 	path, err := os.Getwd()
@@ -41,20 +63,22 @@ func initialize() {
 		log.Fatal(err)
 	}
 
-	webhookStatus = viper.GetInt("webhook.return")
-	webhookMethod = viper.GetString("webhook.method")
+	status = viper.GetInt("server.response_status")
+	method = viper.GetString("proxy.request.method")
+
+	prometheusHandler = promhttp.Handler()
+	prometheusPath = viper.GetString("metrics.path")
 
 	remoteUrl, err := url.Parse(viper.GetString("proxy.remote_url"))
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	webhookProxy, err = NewWebhookProxy(
-		&WebhookProxyConfig{
-			Method:         viper.GetString("webhook.method"),
+	proxy, err = NewProxy(
+		&ProxyConfig{
+			Method:         method,
 			RemoteHost:     remoteUrl.Host,
 			RemoteScheme:   remoteUrl.Scheme,
-			ContentType:    viper.GetString("webhook.content_type"),
 			NumClients:     viper.GetInt("proxy.num_clients"),
 			RequestTimeout: time.Duration(viper.GetInt("proxy.request_timeout")),
 		},
@@ -81,19 +105,38 @@ func main() {
 	log.Fatal(srv.ListenAndServe())
 }
 
-func generateRequestId() int {
-	return rand.Intn(10_000_000)
-}
-
 func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	requestId := generateRequestId()
-	r = r.WithContext(context.WithValue(r.Context(), "reqid", requestId))
+	log.Printf("<- %s %s (%s)", r.Method, r.RequestURI, r.RemoteAddr)
 
-	log.Printf("reqid=%d, <- %s %s (%s)", requestId, r.Method, r.RequestURI, r.RemoteAddr)
-	if r.Method == webhookMethod {
-		go webhookProxy.HandleRequest(r)
-		w.WriteHeader(webhookStatus)
-	} else {
-		w.WriteHeader(http.StatusNotFound)
+	if r.URL.Path == prometheusPath {
+		prometheusHandler.ServeHTTP(w, r)
+		return
 	}
+
+	if r.Method != method {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	timer := prometheus.NewTimer(requestsDuration.WithLabelValues(r.URL.Path))
+
+	go func() {
+		var res string
+
+		proxyBegin := time.Now()
+
+		if err := proxy.HandleRequest(r); err == nil {
+			res = "OK"
+		} else {
+			res = err.Error()
+			log.Println(res)
+		}
+
+		proxyRequestsDuration.
+			WithLabelValues(r.URL.Path, res).
+			Observe(time.Since(proxyBegin).Seconds())
+	}()
+
+	w.WriteHeader(status)
+	timer.ObserveDuration()
 }

@@ -6,25 +6,23 @@ import (
 	"testing"
 )
 
-func TestNewWebhookProxy(t *testing.T) {
+func TestNewProxy(t *testing.T) {
 	var err error
 
 	// Success case
-	_, err = NewWebhookProxy(&WebhookProxyConfig{
+	_, err = NewProxy(&ProxyConfig{
 		NumClients:     2,
 		RequestTimeout: 10,
 	})
-
 	if err != nil {
 		t.Errorf("wanted: nil, got: %s", err)
 	}
 
 	// Wring numClients
-	_, err = NewWebhookProxy(&WebhookProxyConfig{
+	_, err = NewProxy(&ProxyConfig{
 		NumClients:     0,
 		RequestTimeout: 10,
 	})
-
 	if err == nil {
 		t.Errorf("must fail if numClients < 1")
 	}
@@ -55,16 +53,15 @@ func TestHandleRequest(t *testing.T) {
 		},
 	}
 
-	wp := &WebhookProxy{
+	wp := &Proxy{
 		make(chan struct{}, 1),
 		&http.Client{
 			Transport: transport,
 		},
-		&WebhookProxyConfig{
+		&ProxyConfig{
 			Method:         "POST",
 			RemoteHost:     "localhost",
 			RemoteScheme:   "http",
-			ContentType:    "application/json",
 			NumClients:     1,
 			RequestTimeout: 10,
 		},
@@ -73,15 +70,12 @@ func TestHandleRequest(t *testing.T) {
 	// POST request successfully forwarded
 	req = httptest.NewRequest("POST", "https://superhost/endpoint", nil)
 	wp.HandleRequest(req)
-
 	if checkMethod != "POST" {
 		t.Errorf("expected to make a POST request")
 	}
-
 	if checkHost != "localhost" {
 		t.Errorf("expected to change Host of the request")
 	}
-
 	if checkScheme != "http" {
 		t.Errorf("expected to change request scheme")
 	}
