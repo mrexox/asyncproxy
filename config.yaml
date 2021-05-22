@@ -1,0 +1,7 @@
+server:
+  bind: :8080
+  endpoint: /notifications
+proxy:
+  url: http://localhost:5000/notifications
+  num_clients: 500
+  request_timeout: 120 # seconds
