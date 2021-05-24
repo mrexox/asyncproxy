@@ -1,6 +1,9 @@
 package main
 
 import (
+	"bytes"
+	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
@@ -80,7 +83,7 @@ func initialize() {
 			RemoteHost:     remoteUrl.Host,
 			RemoteScheme:   remoteUrl.Scheme,
 			NumClients:     viper.GetInt("proxy.num_clients"),
-			RequestTimeout: time.Duration(viper.GetInt("proxy.request_timeout")),
+			RequestTimeout: time.Duration(viper.GetInt("proxy.request.timeout")),
 		},
 	)
 	if err != nil {
@@ -113,6 +116,7 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Lower the requests load a little bit
 	if r.Method != method {
 		w.WriteHeader(http.StatusNotFound)
 		return
@@ -120,12 +124,21 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	timer := prometheus.NewTimer(requestsDuration.WithLabelValues(r.URL.Path))
 
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		log.Println(err)
+		return
+	}
+
 	go func() {
 		var res string
+		var bodyReader io.Reader
 
 		proxyBegin := time.Now()
 
-		if err := proxy.HandleRequest(r); err == nil {
+		bodyReader = bytes.NewReader(body)
+		if err := proxy.HandleRequest(r, &bodyReader); err == nil {
 			res = "OK"
 		} else {
 			res = err.Error()
