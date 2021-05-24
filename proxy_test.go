@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -39,6 +41,7 @@ func (m MockedRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
 
 func TestHandleRequest(t *testing.T) {
 	var (
+		body        io.Reader
 		checkMethod string
 		checkHost   string
 		checkScheme string
@@ -67,9 +70,11 @@ func TestHandleRequest(t *testing.T) {
 		},
 	}
 
+	body = bytes.NewReader([]byte{})
+
 	// POST request successfully forwarded
 	req = httptest.NewRequest("POST", "https://superhost/endpoint", nil)
-	wp.HandleRequest(req)
+	wp.HandleRequest(req, &body)
 	if checkMethod != "POST" {
 		t.Errorf("expected to make a POST request")
 	}
