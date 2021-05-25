@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"io/ioutil"
 	"log"
@@ -116,40 +117,47 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Lower the requests load a little bit
-	if r.Method != method {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-
 	timer := prometheus.NewTimer(requestsDuration.WithLabelValues(r.URL.Path))
 
-	body, err := ioutil.ReadAll(r.Body)
+	rCopy, body, err := copyRequest(r)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		log.Println(err)
 		return
 	}
 
-	go func() {
-		var res string
-		var bodyReader io.Reader
-
-		proxyBegin := time.Now()
-
-		bodyReader = bytes.NewReader(body)
-		if err := proxy.HandleRequest(r, &bodyReader); err == nil {
-			res = "OK"
-		} else {
-			res = err.Error()
-			log.Println(res)
-		}
-
-		proxyRequestsDuration.
-			WithLabelValues(r.URL.Path, res).
-			Observe(time.Since(proxyBegin).Seconds())
-	}()
+	go proxyRequest(*rCopy, body)
 
 	w.WriteHeader(status)
 	timer.ObserveDuration()
+}
+
+func copyRequest(r *http.Request) (*http.Request, []byte, error) {
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	rCopy := r.Clone(context.Background())
+
+	return rCopy, body, nil
+}
+
+func proxyRequest(r http.Request, body []byte) {
+	var res string
+	var bodyReader io.Reader
+
+	begin := time.Now()
+
+	bodyReader = bytes.NewReader(body)
+	if err := proxy.HandleRequest(&r, &bodyReader); err == nil {
+		res = "OK"
+	} else {
+		res = err.Error()
+		log.Println(res)
+	}
+
+	proxyRequestsDuration.
+		WithLabelValues(r.URL.Path, res).
+		Observe(time.Since(begin).Seconds())
 }
