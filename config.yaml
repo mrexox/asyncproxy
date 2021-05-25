@@ -4,8 +4,12 @@ server:
 proxy:
   remote_url: http://localhost:5000
   num_clients: 500
-  request:
-    timeout: 120 # seconds
-    method: POST
+  request_timeout: 120 # seconds
+queue:
+  enabled: true
+  workers: 10
+redis:
+  key: asyncproxy_requests
+  url: redis://localhost:6379/0
 metrics:
   path: /metrics

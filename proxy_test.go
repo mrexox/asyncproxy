@@ -1,10 +1,7 @@
 package main
 
 import (
-	"bytes"
-	"io"
 	"net/http"
-	"net/http/httptest"
 	"testing"
 )
 
@@ -41,18 +38,18 @@ func (m MockedRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
 
 func TestHandleRequest(t *testing.T) {
 	var (
-		body        io.Reader
-		checkMethod string
 		checkHost   string
 		checkScheme string
-		req         *http.Request
+		checkPath   string
+		checkBody   []byte = make([]byte, 4)
 	)
 
 	transport := MockedRoundTripper{
 		func(r *http.Request) {
-			checkMethod = r.Method
 			checkHost = r.URL.Host
 			checkScheme = r.URL.Scheme
+			checkPath = r.URL.Path
+			_, _ = r.Body.Read(checkBody)
 		},
 	}
 
@@ -62,26 +59,32 @@ func TestHandleRequest(t *testing.T) {
 			Transport: transport,
 		},
 		&ProxyConfig{
-			Method:         "POST",
-			RemoteHost:     "localhost",
+			RemoteHost:     "remote",
 			RemoteScheme:   "http",
 			NumClients:     1,
 			RequestTimeout: 10,
 		},
 	}
 
-	body = bytes.NewReader([]byte{})
-
 	// POST request successfully forwarded
-	req = httptest.NewRequest("POST", "https://superhost/endpoint", nil)
-	wp.HandleRequest(req, &body)
-	if checkMethod != "POST" {
-		t.Errorf("expected to make a POST request")
+
+	wp.Do(&ProxyRequest{
+		Header: map[string][]string{},
+		Method: "POST",
+		Body:   []byte("Body"),
+		Url:    "https://nevergone.com/endpoint",
+	})
+	if string(checkBody) != "Body" {
+		t.Errorf("expected not to change request body: %s != Body", checkBody)
 	}
-	if checkHost != "localhost" {
-		t.Errorf("expected to change Host of the request")
+	if checkHost != "remote" {
+		t.Errorf("expected to change request host: %s != remote", checkHost)
 	}
 	if checkScheme != "http" {
-		t.Errorf("expected to change request scheme")
+		t.Errorf("expected to change request scheme: %s != http", checkScheme)
 	}
+	if checkPath != "/endpoint" {
+		t.Errorf("expected to change request endpoint: %s != /endpoint", checkPath)
+	}
+
 }

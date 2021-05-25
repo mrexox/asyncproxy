@@ -1,10 +1,6 @@
 package main
 
 import (
-	"bytes"
-	"context"
-	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
@@ -21,9 +17,13 @@ import (
 type handler struct{}
 
 var (
-	proxy             *Proxy
-	status            int // e.g. 200
-	method            string
+	proxy  *Proxy
+	status int // e.g. 200
+
+	queueEnabled bool
+	queue        *Queue
+	queueWorkers int
+
 	prometheusHandler http.Handler
 	prometheusPath    string
 
@@ -68,7 +68,6 @@ func initialize() {
 	}
 
 	status = viper.GetInt("server.response_status")
-	method = viper.GetString("proxy.request.method")
 
 	prometheusHandler = promhttp.Handler()
 	prometheusPath = viper.GetString("metrics.path")
@@ -80,15 +79,29 @@ func initialize() {
 
 	proxy, err = NewProxy(
 		&ProxyConfig{
-			Method:         method,
 			RemoteHost:     remoteUrl.Host,
 			RemoteScheme:   remoteUrl.Scheme,
 			NumClients:     viper.GetInt("proxy.num_clients"),
-			RequestTimeout: time.Duration(viper.GetInt("proxy.request.timeout")),
+			RequestTimeout: time.Duration(viper.GetInt("proxy.request_timeout")),
 		},
 	)
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	queueEnabled = viper.GetBool("queue.enabled")
+	if queueEnabled {
+		queue, err = NewQueue(
+			viper.GetString("redis.key"),
+			viper.GetString("redis.url"),
+		)
+		if err != nil {
+			log.Fatal(err)
+		}
+		queueWorkers = viper.GetInt("queue.workers")
+		if queueWorkers < 1 {
+			log.Fatal("redis.workers cannot be less than 1")
+		}
 	}
 }
 
@@ -106,7 +119,25 @@ func main() {
 
 	srv.SetKeepAlivesEnabled(false)
 
+	if queueEnabled {
+		for i := 0; i < queueWorkers; i++ {
+			go runProxyWorker()
+		}
+	}
+
 	log.Fatal(srv.ListenAndServe())
+}
+
+func runProxyWorker() {
+	for {
+		proxyRequest, err := queue.DequeueRequest()
+		if err != nil {
+			log.Printf("queue error: %s", err)
+			continue
+		}
+
+		sendRequestToRemote(proxyRequest)
+	}
 }
 
 func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -119,38 +150,33 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	timer := prometheus.NewTimer(requestsDuration.WithLabelValues(r.URL.Path))
 
-	rCopy, body, err := copyRequest(r)
+	pRequest, err := NewProxyRequest(r)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		log.Println(err)
 		return
 	}
 
-	go proxyRequest(*rCopy, body)
+	go proxyRequest(*pRequest)
 
 	w.WriteHeader(status)
 	timer.ObserveDuration()
 }
 
-func copyRequest(r *http.Request) (*http.Request, []byte, error) {
-	body, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		return nil, nil, err
+func proxyRequest(r ProxyRequest) {
+	if queueEnabled {
+		queue.EnqueueRequest(&r)
+	} else {
+		sendRequestToRemote(&r)
 	}
-
-	rCopy := r.Clone(context.Background())
-
-	return rCopy, body, nil
 }
 
-func proxyRequest(r http.Request, body []byte) {
+func sendRequestToRemote(r *ProxyRequest) {
 	var res string
-	var bodyReader io.Reader
 
 	begin := time.Now()
 
-	bodyReader = bytes.NewReader(body)
-	if err := proxy.HandleRequest(&r, &bodyReader); err == nil {
+	if err := proxy.Do(r); err == nil {
 		res = "OK"
 	} else {
 		res = err.Error()
@@ -158,6 +184,6 @@ func proxyRequest(r http.Request, body []byte) {
 	}
 
 	proxyRequestsDuration.
-		WithLabelValues(r.URL.Path, res).
+		WithLabelValues(r.Url, res).
 		Observe(time.Since(begin).Seconds())
 }

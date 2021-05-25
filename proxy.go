@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"time"
@@ -15,7 +14,6 @@ type Proxy struct {
 }
 
 type ProxyConfig struct {
-	Method         string
 	RemoteHost     string
 	RemoteScheme   string
 	NumClients     int
@@ -39,28 +37,28 @@ func NewProxy(cfg *ProxyConfig) (*Proxy, error) {
 	}, nil
 }
 
-func (p *Proxy) HandleRequest(r *http.Request, body *io.Reader) error {
+func (p *Proxy) Do(r *ProxyRequest) error {
 	// Without balancing the process will eat all available file descriptors
 	p.balancer <- struct{}{}
 	defer func() { <-p.balancer }()
 
-	if err := p.handle(r, body); err != nil {
+	httpReq, err := r.ToHTTPRequest(p)
+	if err != nil {
+		return fmt.Errorf("request error: %s", err)
+	}
+
+	if err := p.sendRequest(httpReq); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-func (p *Proxy) handle(r *http.Request, body *io.Reader) error {
-	newReq, err := p.transform(r, body)
-	if err != nil {
-		return fmt.Errorf("request error: %s", err)
-	}
+func (p *Proxy) sendRequest(r *http.Request) error {
+	reqUrl := r.URL.String()
+	log.Printf("-> %s %s", r.Method, reqUrl)
 
-	reqUrl := newReq.URL.String()
-	log.Printf("-> %s %s", newReq.Method, reqUrl)
-
-	resp, err := p.client.Do(newReq)
+	resp, err := p.client.Do(r)
 	if resp != nil {
 		defer resp.Body.Close()
 	}
@@ -68,28 +66,11 @@ func (p *Proxy) handle(r *http.Request, body *io.Reader) error {
 		return fmt.Errorf("response error: %s", err)
 	}
 
-	log.Printf("   %s %s %s", newReq.Method, reqUrl, resp.Status)
+	log.Printf("   %s %s %s", r.Method, reqUrl, resp.Status)
 
 	if resp.StatusCode > 299 {
 		return fmt.Errorf(resp.Status)
 	}
 
 	return nil
-}
-
-func (p *Proxy) transform(r *http.Request, body *io.Reader) (*http.Request, error) {
-	newUrl := *r.URL
-
-	newUrl.Host = p.RemoteHost
-	newUrl.Scheme = p.RemoteScheme
-
-	newReq, err := http.NewRequest(p.Method, newUrl.String(), *body)
-	if err != nil {
-		return nil, err
-	}
-
-	newReq.Header = r.Header.Clone()
-	newReq.Close = true
-
-	return newReq, nil
 }
