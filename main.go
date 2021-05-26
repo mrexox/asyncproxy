@@ -20,8 +20,8 @@ var (
 	proxy  *Proxy
 	status int // e.g. 200
 
-	queueEnabled bool
 	queue        *Queue
+	queueEnabled bool
 	queueWorkers int
 
 	prometheusHandler http.Handler

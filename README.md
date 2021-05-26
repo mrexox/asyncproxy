@@ -34,6 +34,9 @@ PROXY_REMOTE_URL=http://localhost:5001
 |`server.response_status`| the return code for incoming requests. |
 |`proxy.remote_url`      | base URL for the destination server (must contain http(s):// prefix) |
 |`proxy.num_clients`     | numbe of concurrent clients (goroutines) proxying the requests. The more the number is - the more file descriptors will be borrowed by process. That's why it should be limited. |
-|`proxy.request.timeout` | the timeout in seconds each requests will be waiting for the response. This controls for how long one file descriptor is borrowed by process. |
-|`proxy.request.method`  |the method that is to be proxied. Other requests are just dropped. |
+|`proxy.request_timeout` | the timeout in seconds each requests will be waiting for the response. This controls for how long one file descriptor is borrowed by process. |
+|`queue.enabled`         | enable queueing requests: saving data, so service restarts won't lose the unprocessed requests |
+|`queue.workers`         | number of workers processing the queue. This number is the number of Redis connections open at a time |
+|`redis.key`             | Redis key for the queue |
+|`redis.url`             | Redis URL for the connection |
 |`metrics.path`          | URI for the Prometheus metrics exported. |
