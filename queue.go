@@ -54,7 +54,9 @@ func (q *Queue) DequeueRequest() (*ProxyRequest, error) {
 
 	// result[0] == key
 	var proxyRequest ProxyRequest
-	json.Unmarshal([]byte(result[1]), &proxyRequest)
+	if err = json.Unmarshal([]byte(result[1]), &proxyRequest); err != nil {
+		return nil, err
+	}
 
 	return &proxyRequest, nil
 }

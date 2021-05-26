@@ -1,6 +1,7 @@
 server:
   bind: :8080
   response_status: 200
+  shutdown_timeout: 30 # seconds
 proxy:
   remote_url: http://localhost:5000
   num_clients: 500

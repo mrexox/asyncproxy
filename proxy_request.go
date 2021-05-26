@@ -39,8 +39,7 @@ func (pr *ProxyRequest) URL() (*url.URL, error) {
 }
 
 func (pr *ProxyRequest) ToHTTPRequest(p *Proxy) (*http.Request, error) {
-	var bodyReader io.Reader
-	bodyReader = bytes.NewReader(pr.Body)
+	var bodyReader io.Reader = bytes.NewReader(pr.Body)
 
 	reqURL, err := pr.URL()
 	if err != nil {

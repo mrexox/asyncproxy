@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -52,6 +53,19 @@ func (p *Proxy) Do(r *ProxyRequest) error {
 	}
 
 	return nil
+}
+
+func (p *Proxy) Shutdown(ctx context.Context) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			if len(p.balancer) == 0 {
+				return nil
+			}
+		}
+	}
 }
 
 func (p *Proxy) sendRequest(r *http.Request) error {

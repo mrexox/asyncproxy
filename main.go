@@ -1,11 +1,14 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -17,8 +20,9 @@ import (
 type handler struct{}
 
 var (
-	proxy  *Proxy
-	status int // e.g. 200
+	proxy           *Proxy
+	status          int // e.g. 200
+	shutdownTimeout time.Duration
 
 	queue        *Queue
 	queueEnabled bool
@@ -49,7 +53,7 @@ var (
 	}, []string{"path", "status"})
 )
 
-func initialize() {
+func init() {
 	log.Println("Reading config...")
 
 	path, err := os.Getwd()
@@ -68,6 +72,7 @@ func initialize() {
 	}
 
 	status = viper.GetInt("server.response_status")
+	shutdownTimeout = time.Duration(viper.GetInt("server.shutdown_timeout")) * time.Second
 
 	prometheusHandler = promhttp.Handler()
 	prometheusPath = viper.GetString("metrics.path")
@@ -106,8 +111,6 @@ func initialize() {
 }
 
 func main() {
-	initialize()
-
 	log.Println("Starting server...")
 
 	srv := &http.Server{
@@ -125,7 +128,38 @@ func main() {
 		}
 	}
 
-	log.Fatal(srv.ListenAndServe())
+	// Run server
+	go func() {
+		if err := srv.ListenAndServe(); err != http.ErrServerClosed {
+			log.Printf("server error: %v", err)
+		}
+	}()
+
+	// Handle shutdowns gracefully
+	signalChan := make(chan os.Signal, 1)
+	signal.Notify(
+		signalChan,
+		syscall.SIGINT,
+		syscall.SIGTERM,
+	)
+
+	<-signalChan
+	log.Printf("Shutting down gracefully...")
+
+	gracefulCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer cancel()
+
+	if err := srv.Shutdown(gracefulCtx); err != nil {
+		log.Fatal(err)
+	} else {
+		log.Printf("Gracefully stopped server")
+	}
+
+	if err := proxy.Shutdown(gracefulCtx); err != nil {
+		log.Fatal(err)
+	} else {
+		log.Printf("Gracefull stopped proxy")
+	}
 }
 
 func runProxyWorker() {
