@@ -19,7 +19,7 @@ import (
 	p "github.com/evilmartians/asyncproxy/proxy"
 )
 
-type handler struct{}
+type asyncProxyHandler struct{}
 
 var (
 	proxy           *p.Proxy
@@ -124,7 +124,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:         viper.GetString("server.bind"),
-		Handler:      handler{},
+		Handler:      asyncProxyHandler{},
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 5 * time.Second,
 	}
@@ -171,7 +171,7 @@ func main() {
 	if err := proxy.Shutdown(gracefulCtx); err != nil {
 		log.Fatal(err)
 	} else {
-		log.Printf("Gracefull stopped proxy")
+		log.Printf("Gracefully stopped proxy")
 	}
 
 	if queue == nil {
@@ -185,7 +185,7 @@ func main() {
 	}
 }
 
-func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (h asyncProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	log.Printf("<- %s %s (%s)", r.Method, r.RequestURI, r.RemoteAddr)
 
 	if r.URL.Path == prometheusPath {
@@ -211,10 +211,10 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func proxyRequest(r p.ProxyRequest) {
 	if queueEnabled {
 		err := queue.EnqueueRequest(&r)
-		if err != nil {
-			log.Printf("enqueueing error: %v", err)
-		} else {
+		if err == nil {
 			return
+		} else {
+			log.Printf("enqueueing error: %v", err)
 		}
 	}
 
