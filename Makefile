@@ -8,4 +8,4 @@ docker-build:
 	docker build --tag "$(NAME):$(VERSION)" .
 
 test:
-	go test
+	go test github.com/evilmartians/asyncproxy/proxy
