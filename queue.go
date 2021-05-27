@@ -19,14 +19,16 @@ type Queue interface {
 }
 
 type QueueOptions struct {
-	RedisKey, RedisUrl, DbName string
-	QueueType                  string
+	RedisKey, RedisUrl string
+	RedisPoolSize      int
+	DbName             string
+	QueueType          string
 }
 
 func NewQueue(opts *QueueOptions) (Queue, error) {
 	switch opts.QueueType {
 	case redisQueueType:
-		return q.NewRedisQueue(opts.RedisKey, opts.RedisUrl)
+		return q.NewRedisQueue(opts.RedisKey, opts.RedisUrl, opts.RedisPoolSize)
 	case dbQueueType:
 		return q.NewDbQueue(opts.DbName)
 	default:

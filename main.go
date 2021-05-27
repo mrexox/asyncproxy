@@ -100,10 +100,11 @@ func init() {
 	queueEnabled = viper.GetBool("queue.enabled")
 	if queueEnabled {
 		queue, err = NewQueue(&QueueOptions{
-			RedisKey:  viper.GetString("redis.key"),
-			RedisUrl:  viper.GetString("redis.url"),
-			DbName:    viper.GetString("db.name"),
-			QueueType: viper.GetString("queue.type"),
+			RedisKey:      viper.GetString("redis.key"),
+			RedisUrl:      viper.GetString("redis.url"),
+			RedisPoolSize: viper.GetInt("redis.pool_size"),
+			DbName:        viper.GetString("db.name"),
+			QueueType:     viper.GetString("queue.type"),
 		})
 		if err != nil {
 			log.Fatal(err)

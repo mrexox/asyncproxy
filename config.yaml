@@ -9,10 +9,11 @@ proxy:
 queue:
   type: redis
   enabled: true
-  workers: 10
+  workers: 100
 db:
   name: request_db
 redis:
+  pool_size: 10
   key: asyncproxy_requests
   url: redis://localhost:6379/0
 metrics:

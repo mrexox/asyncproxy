@@ -12,14 +12,22 @@ type RedisQueue struct {
 	key    string
 }
 
-func NewRedisQueue(key, urlStr string) (*RedisQueue, error) {
+func NewRedisQueue(key, urlStr string, poolSize int) (*RedisQueue, error) {
 	options, err := redis.ParseURL(urlStr)
 	if err != nil {
 		return nil, err
 	}
 
+	options.PoolSize = poolSize
+	client := redis.NewClient(options)
+
+	_, err = client.Ping().Result()
+	if err != nil {
+		return nil, err
+	}
+
 	return &RedisQueue{
-		client: redis.NewClient(options),
+		client: client,
 		key:    key,
 	}, nil
 }
