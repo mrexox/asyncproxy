@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	"log"
+
+	p "github.com/evilmartians/asyncproxy/proxy"
 )
 
-type handleFunc func(*ProxyRequest)
+type handleFunc func(*p.ProxyRequest)
 
 type Worker struct {
 	Shutdown context.CancelFunc
@@ -40,13 +42,13 @@ func (w *Worker) run() {
 		case <-w.ctx.Done():
 			return
 		default:
-			proxyRequest, err := w.queue.DequeueRequest()
+			request, err := w.queue.DequeueRequest()
 			if err != nil {
 				log.Printf("queue error: %s", err)
 				continue
 			}
 
-			w.handle(proxyRequest)
+			w.handle(request)
 		}
 	}
 }

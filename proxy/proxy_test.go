@@ -1,4 +1,4 @@
-package main
+package proxy_test
 
 import (
 	"net/http"

@@ -1,7 +1,8 @@
-package main
+package queues
 
 import (
 	"github.com/beeker1121/goque"
+	p "github.com/evilmartians/asyncproxy/proxy"
 )
 
 type DbQueue struct {
@@ -23,7 +24,7 @@ func (fq *DbQueue) Shutdown() error {
 	return nil
 }
 
-func (fq *DbQueue) EnqueueRequest(r *ProxyRequest) error {
+func (fq *DbQueue) EnqueueRequest(r *p.ProxyRequest) error {
 	_, err := fq.queue.EnqueueObject(*r)
 	if err != nil {
 		return err
@@ -32,7 +33,7 @@ func (fq *DbQueue) EnqueueRequest(r *ProxyRequest) error {
 	return nil
 }
 
-func (fq *DbQueue) DequeueRequest() (*ProxyRequest, error) {
+func (fq *DbQueue) DequeueRequest() (*p.ProxyRequest, error) {
 	var (
 		item *goque.Item
 		err  error
@@ -49,7 +50,7 @@ func (fq *DbQueue) DequeueRequest() (*ProxyRequest, error) {
 		return nil, err
 	}
 
-	var proxyRequest ProxyRequest
+	var proxyRequest p.ProxyRequest
 
 	if err = item.ToObject(&proxyRequest); err != nil {
 		return nil, err

@@ -1,8 +1,9 @@
-package main
+package queues
 
 import (
 	"encoding/json"
 
+	p "github.com/evilmartians/asyncproxy/proxy"
 	"github.com/go-redis/redis"
 )
 
@@ -27,7 +28,7 @@ func (q *RedisQueue) Shutdown() error {
 	return q.client.Close()
 }
 
-func (q *RedisQueue) EnqueueRequest(r *ProxyRequest) error {
+func (q *RedisQueue) EnqueueRequest(r *p.ProxyRequest) error {
 	marshalledRequest, err := json.Marshal(*r)
 	if err != nil {
 		return err
@@ -40,14 +41,14 @@ func (q *RedisQueue) EnqueueRequest(r *ProxyRequest) error {
 	return nil
 }
 
-func (q *RedisQueue) DequeueRequest() (*ProxyRequest, error) {
+func (q *RedisQueue) DequeueRequest() (*p.ProxyRequest, error) {
 	result, err := q.client.BLPop(0, q.key).Result()
 	if err != nil {
 		return nil, err
 	}
 
 	// result[0] == key
-	var proxyRequest ProxyRequest
+	var proxyRequest p.ProxyRequest
 	if err = json.Unmarshal([]byte(result[1]), &proxyRequest); err != nil {
 		return nil, err
 	}

@@ -15,12 +15,14 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/viper"
+
+	p "github.com/evilmartians/asyncproxy/proxy"
 )
 
 type handler struct{}
 
 var (
-	proxy           *Proxy
+	proxy           *p.Proxy
 	status          int // e.g. 200
 	shutdownTimeout time.Duration
 
@@ -83,8 +85,8 @@ func init() {
 		log.Fatal(err)
 	}
 
-	proxy, err = NewProxy(
-		&ProxyConfig{
+	proxy, err = p.NewProxy(
+		&p.ProxyConfig{
 			RemoteHost:     remoteUrl.Host,
 			RemoteScheme:   remoteUrl.Scheme,
 			NumClients:     viper.GetInt("proxy.num_clients"),
@@ -189,7 +191,7 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	timer := prometheus.NewTimer(requestsDuration.WithLabelValues(r.URL.Path))
 
-	pRequest, err := NewProxyRequest(r)
+	pRequest, err := p.NewProxyRequest(r)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		log.Println(err)
@@ -202,7 +204,7 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	timer.ObserveDuration()
 }
 
-func proxyRequest(r ProxyRequest) {
+func proxyRequest(r p.ProxyRequest) {
 	if queueEnabled {
 		err := queue.EnqueueRequest(&r)
 		if err != nil {
@@ -215,7 +217,7 @@ func proxyRequest(r ProxyRequest) {
 	sendRequestToRemote(&r)
 }
 
-func sendRequestToRemote(r *ProxyRequest) {
+func sendRequestToRemote(r *p.ProxyRequest) {
 	var res string
 
 	begin := time.Now()

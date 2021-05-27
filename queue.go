@@ -2,6 +2,9 @@ package main
 
 import (
 	"fmt"
+
+	p "github.com/evilmartians/asyncproxy/proxy"
+	q "github.com/evilmartians/asyncproxy/queues"
 )
 
 const (
@@ -11,8 +14,8 @@ const (
 
 type Queue interface {
 	Shutdown() error
-	EnqueueRequest(r *ProxyRequest) error
-	DequeueRequest() (*ProxyRequest, error)
+	EnqueueRequest(r *p.ProxyRequest) error
+	DequeueRequest() (*p.ProxyRequest, error)
 }
 
 type QueueOptions struct {
@@ -23,9 +26,9 @@ type QueueOptions struct {
 func NewQueue(opts *QueueOptions) (Queue, error) {
 	switch opts.QueueType {
 	case redisQueueType:
-		return NewRedisQueue(opts.RedisKey, opts.RedisUrl)
+		return q.NewRedisQueue(opts.RedisKey, opts.RedisUrl)
 	case dbQueueType:
-		return NewDbQueue(opts.DbName)
+		return q.NewDbQueue(opts.DbName)
 	default:
 		return nil, fmt.Errorf("Unknown queue type: %s", opts.QueueType)
 	}
