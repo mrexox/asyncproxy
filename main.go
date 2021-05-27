@@ -99,12 +99,15 @@ func init() {
 
 	queueEnabled = viper.GetBool("queue.enabled")
 	if queueEnabled {
+		queueType := viper.GetString("queue.type")
+		log.Printf("Queueing enabled: %s", queueType)
+
 		queue, err = NewQueue(&QueueOptions{
 			RedisKey:      viper.GetString("redis.key"),
 			RedisUrl:      viper.GetString("redis.url"),
 			RedisPoolSize: viper.GetInt("redis.pool_size"),
 			DbName:        viper.GetString("db.name"),
-			QueueType:     viper.GetString("queue.type"),
+			QueueType:     queueType,
 		})
 		if err != nil {
 			log.Fatal(err)
@@ -178,7 +181,7 @@ func main() {
 	if err := queue.Shutdown(); err != nil {
 		log.Fatal(err)
 	} else {
-		log.Printf("Gracefully stopped queue")
+		log.Printf("Gracefully closed queue")
 	}
 }
 

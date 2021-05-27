@@ -7,7 +7,7 @@ proxy:
   num_clients: 500
   request_timeout: 120 # seconds
 queue:
-  type: redis
+  type: db
   enabled: true
   workers: 100
 db:
