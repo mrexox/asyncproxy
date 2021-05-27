@@ -7,8 +7,11 @@ proxy:
   num_clients: 500
   request_timeout: 120 # seconds
 queue:
+  type: redis
   enabled: true
   workers: 10
+db:
+  name: request_db
 redis:
   key: asyncproxy_requests
   url: redis://localhost:6379/0

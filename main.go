@@ -24,10 +24,11 @@ var (
 	status          int // e.g. 200
 	shutdownTimeout time.Duration
 
-	queue        *Queue
+	queue        Queue
 	queueEnabled bool
 	queueWorkers int
 
+	// Metrics
 	prometheusHandler http.Handler
 	prometheusPath    string
 
@@ -96,10 +97,12 @@ func init() {
 
 	queueEnabled = viper.GetBool("queue.enabled")
 	if queueEnabled {
-		queue, err = NewQueue(
-			viper.GetString("redis.key"),
-			viper.GetString("redis.url"),
-		)
+		queue, err = NewQueue(&QueueOptions{
+			RedisKey:  viper.GetString("redis.key"),
+			RedisUrl:  viper.GetString("redis.url"),
+			DbName:    viper.GetString("db.name"),
+			QueueType: viper.GetString("queue.type"),
+		})
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -122,10 +125,10 @@ func main() {
 
 	srv.SetKeepAlivesEnabled(false)
 
+	var worker *Worker
 	if queueEnabled {
-		for i := 0; i < queueWorkers; i++ {
-			go runProxyWorker()
-		}
+		worker = NewWorker(queueWorkers, queue, sendRequestToRemote)
+		worker.Run()
 	}
 
 	// Run server
@@ -155,22 +158,24 @@ func main() {
 		log.Printf("Gracefully stopped server")
 	}
 
+	if worker != nil {
+		worker.Shutdown()
+	}
+
 	if err := proxy.Shutdown(gracefulCtx); err != nil {
 		log.Fatal(err)
 	} else {
 		log.Printf("Gracefull stopped proxy")
 	}
-}
 
-func runProxyWorker() {
-	for {
-		proxyRequest, err := queue.DequeueRequest()
-		if err != nil {
-			log.Printf("queue error: %s", err)
-			continue
-		}
+	if queue == nil {
+		return
+	}
 
-		sendRequestToRemote(proxyRequest)
+	if err := queue.Shutdown(); err != nil {
+		log.Fatal(err)
+	} else {
+		log.Printf("Gracefully stopped queue")
 	}
 }
 
@@ -199,10 +204,15 @@ func (h handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func proxyRequest(r ProxyRequest) {
 	if queueEnabled {
-		queue.EnqueueRequest(&r)
-	} else {
-		sendRequestToRemote(&r)
+		err := queue.EnqueueRequest(&r)
+		if err != nil {
+			log.Printf("enqueueing error: %v", err)
+		} else {
+			return
+		}
 	}
+
+	sendRequestToRemote(&r)
 }
 
 func sendRequestToRemote(r *ProxyRequest) {

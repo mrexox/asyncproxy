@@ -38,6 +38,8 @@ PROXY_REMOTE_URL=http://localhost:5001
 |`proxy.request_timeout`  | the time in seconds each requests will be waiting for the response. This controls for how long one file descriptor is borrowed by process. |
 |`queue.enabled`          | enable queueing requests: saving data, so service restarts won't lose the unprocessed requests |
 |`queue.workers`          | number of workers processing the queue. This number is the number of Redis connections open at a time |
+|`queue.type`             | the queue type. Available types: `redis`, `db` |
+|`db.name`                | the database name (used if `queue.type = db`) |
 |`redis.key`              | Redis key for the queue |
-|`redis.url`              | Redis URL for the connection |
+|`redis.url`              | Redis URL for the connection (used if `queue.type = redis`)|
 |`metrics.path`           | URI for the Prometheus metrics exported. |
