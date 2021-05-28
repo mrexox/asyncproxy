@@ -69,10 +69,10 @@ func TestHandleRequest(t *testing.T) {
 	// POST request successfully forwarded
 
 	err := wp.Do(&ProxyRequest{
-		Header: map[string][]string{},
-		Method: "POST",
-		Body:   []byte("Body"),
-		Url:    "https://nevergone.com/endpoint",
+		Header:    map[string][]string{},
+		Method:    "POST",
+		Body:      []byte("Body"),
+		OriginURL: "https://nevergone.com/endpoint",
 	})
 	if err != nil {
 		t.Errorf("request should complete without errors: %s", err)

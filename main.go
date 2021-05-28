@@ -80,15 +80,15 @@ func init() {
 	prometheusHandler = promhttp.Handler()
 	prometheusPath = viper.GetString("metrics.path")
 
-	remoteUrl, err := url.Parse(viper.GetString("proxy.remote_url"))
+	remoteURL, err := url.Parse(viper.GetString("proxy.remote_url"))
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	proxy, err = p.NewProxy(
 		&p.ProxyConfig{
-			RemoteHost:     remoteUrl.Host,
-			RemoteScheme:   remoteUrl.Scheme,
+			RemoteHost:     remoteURL.Host,
+			RemoteScheme:   remoteURL.Scheme,
 			NumClients:     viper.GetInt("proxy.num_clients"),
 			RequestTimeout: time.Duration(viper.GetInt("proxy.request_timeout")),
 		},
@@ -104,7 +104,7 @@ func init() {
 
 		queue, err = NewQueue(&QueueOptions{
 			RedisKey:      viper.GetString("redis.key"),
-			RedisUrl:      viper.GetString("redis.url"),
+			RedisURL:      viper.GetString("redis.url"),
 			RedisPoolSize: viper.GetInt("redis.pool_size"),
 			DbName:        viper.GetString("db.name"),
 			QueueType:     queueType,
@@ -114,7 +114,7 @@ func init() {
 		}
 		queueWorkers = viper.GetInt("queue.workers")
 		if queueWorkers < 1 {
-			log.Fatal("redis.workers cannot be less than 1")
+			log.Fatal("workers count cannot be less than 1")
 		}
 	}
 }
@@ -234,6 +234,6 @@ func sendRequestToRemote(r *p.ProxyRequest) {
 	}
 
 	proxyRequestsDuration.
-		WithLabelValues(r.Url, res).
+		WithLabelValues(r.OriginURL, res).
 		Observe(time.Since(begin).Seconds())
 }

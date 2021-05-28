@@ -8,11 +8,13 @@ import (
 	"net/url"
 )
 
+// Need to store HTTP request properties to allow goroutines handle
+// them asynchronously and thread-safe.
 type ProxyRequest struct {
-	Header http.Header
-	Method string
-	Body   []byte
-	Url    string
+	Header    http.Header
+	Method    string
+	Body      []byte
+	OriginURL string
 }
 
 func NewProxyRequest(r *http.Request) (*ProxyRequest, error) {
@@ -22,15 +24,15 @@ func NewProxyRequest(r *http.Request) (*ProxyRequest, error) {
 	}
 
 	return &ProxyRequest{
-		Header: r.Header.Clone(),
-		Method: r.Method,
-		Body:   body,
-		Url:    r.URL.String(),
+		Header:    r.Header.Clone(),
+		Method:    r.Method,
+		Body:      body,
+		OriginURL: r.URL.String(),
 	}, nil
 }
 
 func (pr *ProxyRequest) URL() (*url.URL, error) {
-	res, err := url.Parse(pr.Url)
+	res, err := url.Parse(pr.OriginURL)
 	if err != nil {
 		return nil, err
 	}

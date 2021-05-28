@@ -39,7 +39,7 @@ func NewProxy(cfg *ProxyConfig) (*Proxy, error) {
 }
 
 func (p *Proxy) Do(r *ProxyRequest) error {
-	// Without balancing the process will eat all available file descriptors
+	// Without balancing goroutines will eat all available file descriptors
 	p.balancer <- struct{}{}
 	defer func() { <-p.balancer }()
 
@@ -69,8 +69,8 @@ func (p *Proxy) Shutdown(ctx context.Context) error {
 }
 
 func (p *Proxy) sendRequest(r *http.Request) error {
-	reqUrl := r.URL.String()
-	log.Printf("-> %s %s", r.Method, reqUrl)
+	reqURL := r.URL.String()
+	log.Printf("-> %s %s", r.Method, reqURL)
 
 	resp, err := p.client.Do(r)
 	if resp != nil {
@@ -80,7 +80,7 @@ func (p *Proxy) sendRequest(r *http.Request) error {
 		return fmt.Errorf("response error: %s", err)
 	}
 
-	log.Printf("   %s %s %s", r.Method, reqUrl, resp.Status)
+	log.Printf("   %s %s %s", r.Method, reqURL, resp.Status)
 
 	if resp.StatusCode > 299 {
 		return fmt.Errorf(resp.Status)
