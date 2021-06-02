@@ -9,7 +9,7 @@ proxy:
 queue:
   type: db
   enabled: true
-  workers: 100
+  workers: 120
 db:
   name: request_db
 redis:

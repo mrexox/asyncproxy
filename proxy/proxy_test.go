@@ -17,7 +17,7 @@ func TestNewProxy(t *testing.T) {
 		t.Errorf("wanted: nil, got: %s", err)
 	}
 
-	// Wring numClients
+	// Bad NumClients
 	_, err = NewProxy(&ProxyConfig{
 		NumClients:     0,
 		RequestTimeout: 10,
