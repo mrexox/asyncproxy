@@ -4,17 +4,16 @@ server:
   shutdown_timeout: 30 # seconds
 proxy:
   remote_url: http://localhost:5000
-  num_clients: 500
+  num_clients: 300
   request_timeout: 120 # seconds
 queue:
-  type: db
+  type: sqlite
   enabled: true
-  workers: 120
+  workers: 150
 db:
-  name: request_db
-redis:
-  pool_size: 10
-  key: asyncproxy_requests
-  url: redis://localhost:6379/0
+  leveldb:
+    name: request_db/leveldb
+  sqlite:
+    name: request_db/sqlite
 metrics:
   path: /metrics

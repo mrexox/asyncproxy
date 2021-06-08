@@ -5,27 +5,27 @@ import (
 	p "github.com/evilmartians/asyncproxy/proxy"
 )
 
-type DbQueue struct {
+type LevelDBQueue struct {
 	queue *goque.Queue
 }
 
-func NewDbQueue(dbName string) (*DbQueue, error) {
+func NewLevelDBQueue(dbName string) (*LevelDBQueue, error) {
 	q, err := goque.OpenQueue(dbName)
 	if err != nil {
 		return nil, err
 	}
 
-	return &DbQueue{queue: q}, nil
+	return &LevelDBQueue{queue: q}, nil
 }
 
-func (fq *DbQueue) Shutdown() error {
-	fq.queue.Close()
+func (q *LevelDBQueue) Shutdown() error {
+	q.queue.Close()
 
 	return nil
 }
 
-func (fq *DbQueue) EnqueueRequest(r *p.ProxyRequest) error {
-	_, err := fq.queue.EnqueueObject(*r)
+func (q *LevelDBQueue) EnqueueRequest(r *p.ProxyRequest) error {
+	_, err := q.queue.EnqueueObject(*r)
 	if err != nil {
 		return err
 	}
@@ -33,14 +33,14 @@ func (fq *DbQueue) EnqueueRequest(r *p.ProxyRequest) error {
 	return nil
 }
 
-func (fq *DbQueue) DequeueRequest() (*p.ProxyRequest, error) {
+func (q *LevelDBQueue) DequeueRequest() (*p.ProxyRequest, error) {
 	var (
 		item *goque.Item
 		err  error
 	)
 
 	for {
-		item, err = fq.queue.Dequeue()
+		item, err = q.queue.Dequeue()
 		if err != goque.ErrEmpty {
 			break
 		}

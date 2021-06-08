@@ -8,8 +8,8 @@ import (
 )
 
 const (
-	redisQueueType = "redis"
-	dbQueueType    = "db"
+	sqliteQueueType  = "sqlite"
+	leveldbQueueType = "leveldb"
 )
 
 type Queue interface {
@@ -19,18 +19,17 @@ type Queue interface {
 }
 
 type QueueOptions struct {
-	RedisKey, RedisURL string
-	RedisPoolSize      int
-	DbName             string
-	QueueType          string
+	DBName    string
+	QueueType string
 }
 
 func NewQueue(opts *QueueOptions) (Queue, error) {
 	switch opts.QueueType {
-	case redisQueueType:
-		return q.NewRedisQueue(opts.RedisKey, opts.RedisURL, opts.RedisPoolSize)
-	case dbQueueType:
-		return q.NewDbQueue(opts.DbName)
+	case leveldbQueueType:
+		return q.NewLevelDBQueue(opts.DBName)
+	case sqliteQueueType:
+		return q.NewSQLiteQueue(opts.DBName)
+
 	default:
 		return nil, fmt.Errorf("Unknown queue type: %s", opts.QueueType)
 	}

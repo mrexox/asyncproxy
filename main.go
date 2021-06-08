@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"net/url"
@@ -103,11 +104,8 @@ func init() {
 		log.Printf("Queueing enabled: %s", queueType)
 
 		queue, err = NewQueue(&QueueOptions{
-			RedisKey:      viper.GetString("redis.key"),
-			RedisURL:      viper.GetString("redis.url"),
-			RedisPoolSize: viper.GetInt("redis.pool_size"),
-			DbName:        viper.GetString("db.name"),
-			QueueType:     queueType,
+			DBName:    viper.GetString(fmt.Sprintf("db.%s.name", queueType)),
+			QueueType: queueType,
 		})
 		if err != nil {
 			log.Fatal(err)

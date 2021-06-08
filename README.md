@@ -38,9 +38,11 @@ PROXY_REMOTE_URL=http://localhost:5001
 |`proxy.request_timeout`  | the time in seconds each requests will be waiting for the response. This controls for how long one file descriptor is borrowed by process. |
 |`queue.enabled`          | enable queueing requests: saving data, so service restarts won't lose the unprocessed requests |
 |`queue.workers`          | number of workers processing the queue |
-|`queue.type`             | the queue type. Available types: `redis`, `db` |
-|`db.name`                | the database name (used if `queue.type = db`) |
-|`redis.key`              | Redis key for the queue |
-|`redis.url`              | Redis URL for the connection (used if `queue.type = redis`)|
-|`redis.pool_size`        | number of redis connections kept open |
+|`queue.type`             | the queue type. Available types: `sqlite`, `leveldb` |
+|`db.leveldb.name`        | the database directory path (used if `queue.type = leveldb`) |
+|`db.sqlite.name`         | the database file path (used if `queue.type = sqlite`) |
 |`metrics.path`           | URI for the Prometheus metrics exported. |
+
+### Configuration aspects
+
+When setting `server.shutdown_timeout` and `queue.workers` consider the following: on shutdown the server waits for all workers to complete their requests. So, if proxying takes 0.1 seconds, it may take up to 30 seconds for 300 workers to gracefully shut down.
