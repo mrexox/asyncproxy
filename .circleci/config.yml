@@ -1,0 +1,22 @@
+version: 2.1
+
+jobs:
+  build:
+    branches:
+      only:
+        - main
+    environment:
+      IMAGE_NAME: gcr.io/ebay-mag/asyncproxy
+    steps:
+      - checkout
+      - run:
+          name: Test
+          command: make test
+
+      - run:
+          name: Build container
+          command: make docker-build
+
+      - run:
+          name: Deploy container
+          command: make docker-push
