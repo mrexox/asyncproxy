@@ -14,9 +14,10 @@ workflows:
           requires:
             - test
           filters:
-            branches:
+            tags:
               only:
-                - main
+                # v1.2.3
+                - /^v[0-9]+(\.[0-9]+)*$/
 jobs:
   test:
     docker:
