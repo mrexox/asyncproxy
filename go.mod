@@ -3,7 +3,7 @@ module github.com/evilmartians/asyncproxy
 go 1.16
 
 require (
-	github.com/beeker1121/goque v2.1.0+incompatible
+	github.com/beeker1121/goque v2.1.1+incompatible
 	github.com/google/uuid v1.2.0
 	github.com/mattn/go-sqlite3 v1.14.7
 	github.com/prometheus/client_golang v1.10.0
