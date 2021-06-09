@@ -17,4 +17,6 @@ RUN apk add --no-cache sqlite-libs
 COPY --from=builder /app/asyncproxy /asyncproxy
 COPY --from=builder /app/config.yaml /config.yaml
 
-ENTRYPOINT ["/asyncproxy"]
+RUN mkdir /request_db
+
+CMD ["/asyncproxy"]
