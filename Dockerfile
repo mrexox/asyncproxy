@@ -4,19 +4,20 @@ WORKDIR /app
 
 COPY . .
 
-RUN apk add --no-cache sqlite-libs sqlite-dev gcc libc-dev
-RUN CGO_ENABLED=1 \
+RUN CGO_ENABLED=0 \
+    GOOS=linux \
+    GOARCH=amd64 \
+    go build -ldflags '-w -s' -o goose migrations/goose.go
+
+RUN CGO_ENABLED=0 \
     GOOS=linux \
     GOARCH=amd64 \
     go build -ldflags '-w -s' -o /app/asyncproxy .
 
-FROM alpine:3.4
+FROM scratch
 
-RUN apk add --no-cache sqlite-libs
-
+COPY --from=builder /app/goose /goose
 COPY --from=builder /app/asyncproxy /asyncproxy
 COPY --from=builder /app/config.yaml /config.yaml
-
-RUN mkdir /request_db
 
 CMD ["/asyncproxy"]

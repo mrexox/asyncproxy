@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"net/http"
 	"net/url"
@@ -27,7 +26,7 @@ var (
 	status          int // e.g. 200
 	shutdownTimeout time.Duration
 
-	queue        Queue
+	queue        *PgQueue
 	queueEnabled bool
 	queueWorkers int
 
@@ -100,16 +99,16 @@ func init() {
 
 	queueEnabled = viper.GetBool("queue.enabled")
 	if queueEnabled {
-		queueType := viper.GetString("queue.type")
-		log.Printf("Queueing enabled: %s", queueType)
+		log.Printf("Queueing enabled")
 
-		queue, err = NewQueue(&QueueOptions{
-			DBName:    viper.GetString(fmt.Sprintf("db.%s.name", queueType)),
-			QueueType: queueType,
-		})
+		queue, err = NewPgQueue(
+			viper.GetString("db.connection_string"),
+			viper.GetInt("db.max_connections"),
+		)
 		if err != nil {
 			log.Fatal(err)
 		}
+
 		queueWorkers = viper.GetInt("queue.workers")
 		if queueWorkers < 1 {
 			log.Fatal("workers count cannot be less than 1")

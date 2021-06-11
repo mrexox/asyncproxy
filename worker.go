@@ -14,11 +14,11 @@ type Worker struct {
 
 	ctx        context.Context
 	numWorkers int
-	queue      Queue
+	queue      *PgQueue
 	handle     handleFunc
 }
 
-func NewWorker(numWorkers int, queue Queue, handle handleFunc) *Worker {
+func NewWorker(numWorkers int, queue *PgQueue, handle handleFunc) *Worker {
 	ctx, ctxCancel := context.WithCancel(context.Background())
 
 	return &Worker{

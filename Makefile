@@ -1,8 +1,8 @@
-VERSION       := 1.0
+VERSION       := 2.0
 IMAGE_NAME    ?= asyncproxy
 
 build:
-	go build -ldflags '-w -s' -o "$(NAME)"
+	go build -ldflags '-w -s' -o "$(IMAGE_NAME)"
 
 docker-build:
 	docker build --tag "$(IMAGE_NAME):builder" \

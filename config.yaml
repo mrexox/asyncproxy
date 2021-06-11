@@ -7,13 +7,10 @@ proxy:
   num_clients: 300
   request_timeout: 120 # seconds
 queue:
-  type: sqlite
   enabled: true
   workers: 150
 db:
-  leveldb:
-    name: request_db/leveldb
-  sqlite:
-    name: request_db/sqlite
+  connection_string: 'host=localhost port=5432 user=postgres password=postgres dbname=asyncproxy sslmode=disable'
+  max_connections: 10
 metrics:
   path: /metrics

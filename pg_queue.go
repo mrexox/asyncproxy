@@ -1,99 +1,92 @@
-package queues
+package main
 
 import (
 	"context"
 	"database/sql"
 	"encoding/json"
 	"github.com/google/uuid"
-	_ "github.com/mattn/go-sqlite3"
 	"sync"
 	"time"
+
+	_ "github.com/lib/pq"
 
 	p "github.com/evilmartians/asyncproxy/proxy"
 )
 
 const (
-	sqlCreateDatabase = `
-    CREATE TABLE IF NOT EXISTS proxy_requests (
-      id TEXT,
-      timestamp DATETIME,
-      processed BOOLEAN,
-      Method TEXT,
-      Header TEXT,
-      Body TEXT,
-      OriginURL TEXT
-    );
-  `
-	sqlInsert = `
+	insertSQL = `
     INSERT INTO proxy_requests (
-      id,
-      timestamp,
-      processed,
-      Method,
-      Header,
-      Body,
-      OriginURL
-    ) VALUES (?, CURRENT_TIMESTAMP, false, ?, ?, ?, ?);
+      timestamp, processed, id, method, header, body, origin_url
+    ) VALUES (now(), false, $1, $2, $3, $4, $5);
   `
-	sqlSelect = `
-    SELECT id, Method, Header, Body, OriginURL
+
+	selectSQL = `
+    SELECT id, method, header, body, origin_url
     FROM proxy_requests
     WHERE processed = false
-    ORDER BY datetime(timestamp) ASC
-    LIMIT 1;
+    ORDER BY timestamp ASC
+    LIMIT 1
+    FOR UPDATE
+    SKIP LOCKED;
   `
-	sqlDeleteStale = `
-    DELETE FROM proxy_requests WHERE processed = true;
+
+	deleteStaleSQL = `
+    DELETE FROM proxy_requests WHERE processed = 't';
+  `
+
+	setStaleSQL = `
+    UPDATE proxy_requests SET processed = true WHERE id = $1;
   `
 )
 
-type SQLiteQueue struct {
+type PgQueue struct {
 	sync.RWMutex
 	db       *sql.DB
 	shutdown context.CancelFunc
 }
 
-func NewSQLiteQueue(dbName string) (*SQLiteQueue, error) {
-	db, err := sql.Open("sqlite3", dbName)
+func NewPgQueue(connString string, maxConns int) (*PgQueue, error) {
+	db, err := sql.Open("postgres", connString)
 	if err != nil {
 		return nil, err
 	}
 
-	db.SetMaxOpenConns(1) // prevents locks on inserting
+	db.SetMaxOpenConns(maxConns)
 
-	// Creating DB
-	_, err = db.Exec(sqlCreateDatabase)
+	err = db.Ping()
 	if err != nil {
 		return nil, err
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	queue := &SQLiteQueue{db: db, shutdown: cancel}
+	queue := &PgQueue{db: db, shutdown: cancel}
+
 	go queue.deleteStale(ctx)
+
 	return queue, nil
 }
 
-func (q *SQLiteQueue) deleteStale(ctx context.Context) {
+func (q *PgQueue) deleteStale(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		default:
 			time.Sleep(10 * time.Second)
-			q.db.Exec(sqlDeleteStale)
+			q.db.Exec(deleteStaleSQL)
 		}
 	}
 }
 
-func (q *SQLiteQueue) Shutdown() error {
+func (q *PgQueue) Shutdown() error {
 	q.shutdown()
 	q.db.Close()
 
 	return nil
 }
 
-func (q *SQLiteQueue) EnqueueRequest(r *p.ProxyRequest) error {
-	statement, err := q.db.Prepare(sqlInsert)
+func (q *PgQueue) EnqueueRequest(r *p.ProxyRequest) error {
+	statement, err := q.db.Prepare(insertSQL)
 	if err != nil {
 		return err
 	}
@@ -112,7 +105,7 @@ func (q *SQLiteQueue) EnqueueRequest(r *p.ProxyRequest) error {
 	return nil
 }
 
-func (q *SQLiteQueue) DequeueRequest() (*p.ProxyRequest, error) {
+func (q *PgQueue) DequeueRequest() (*p.ProxyRequest, error) {
 	var (
 		anything     bool
 		id           string
@@ -123,8 +116,13 @@ func (q *SQLiteQueue) DequeueRequest() (*p.ProxyRequest, error) {
 	q.Lock()
 	defer q.Unlock()
 
+	tx, err := q.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+
 	for !anything {
-		rows, err := q.db.Query(sqlSelect)
+		rows, err := tx.Query(selectSQL)
 		if err != nil {
 			return nil, err
 		}
@@ -148,22 +146,23 @@ func (q *SQLiteQueue) DequeueRequest() (*p.ProxyRequest, error) {
 		}
 	}
 
-	err := json.Unmarshal(headers, &proxyRequest.Header)
+	err = json.Unmarshal(headers, &proxyRequest.Header)
 	if err != nil {
 		return nil, err
 	}
 
-	updateSQL := `
-    UPDATE proxy_requests SET processed = true WHERE id = ?;
-  `
-
-	statement, err := q.db.Prepare(updateSQL)
+	statement, err := tx.Prepare(setStaleSQL)
 	if err != nil {
 		return nil, err
 	}
 	defer statement.Close()
 
 	_, err = statement.Exec(id)
+	if err != nil {
+		return nil, err
+	}
+
+	err = tx.Commit()
 	if err != nil {
 		return nil, err
 	}
