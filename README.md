@@ -38,9 +38,8 @@ PROXY_REMOTE_URL=http://localhost:5001
 |`proxy.request_timeout`  | the time in seconds each requests will be waiting for the response. This controls for how long one file descriptor is borrowed by process. |
 |`queue.enabled`          | enable queueing requests: saving data, so service restarts won't lose the unprocessed requests |
 |`queue.workers`          | number of workers processing the queue |
-|`queue.type`             | the queue type. Available types: `sqlite`, `leveldb` |
-|`db.leveldb.name`        | the database directory path (used if `queue.type = leveldb`) |
-|`db.sqlite.name`         | the database file path (used if `queue.type = sqlite`) |
+|`db.connection_string`   | database connection string |
+|`db.max_connections`     | max open connections to database allowed |
 |`metrics.path`           | URI for the Prometheus metrics exported. |
 
 ### Configuration aspects
