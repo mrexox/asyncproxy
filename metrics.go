@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"net/http"
 	"time"
 
@@ -51,6 +52,28 @@ func InitMetrics(v *viper.Viper) {
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 5 * time.Second,
 	}
+
+	queue, err := NewPgQueue(
+		v.GetString("db.connection_string"),
+		v.GetInt("db.max_connections"),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	promauto.NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "queue_unprocessed_size",
+		Help: "Number of unprocessed requests in the queue.",
+	}, func() float64 {
+		return float64(queue.GetUnprocessed())
+	})
+
+	promauto.NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "queue_total_size",
+		Help: "Number of all requests in the queue.",
+	}, func() float64 {
+		return float64(queue.GetTotal())
+	})
 }
 
 func GetMetricsServer() *http.Server {
@@ -78,6 +101,8 @@ func trackProxyRequestDuration(start time.Time, r *p.ProxyRequest, res string) {
 }
 
 func (m metricsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	log.Printf("<- %s %s (%s)", r.Method, r.RequestURI, r.RemoteAddr)
+
 	if r.URL.Path == prometheusPath {
 		handleMetrics(w, r)
 		return

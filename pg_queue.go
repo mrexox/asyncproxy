@@ -38,6 +38,13 @@ const (
 	setStaleSQL = `
     UPDATE proxy_requests SET processed = true WHERE id = $1;
   `
+
+	countUnprocessedSQL = `
+    SELECT COUNT(*) FROM proxy_requests WHERE processed = 'f';
+  `
+	countTotalSQL = `
+    SELECT COUNT(*) FROM proxy_requests;
+  `
 )
 
 type PgQueue struct {
@@ -176,4 +183,14 @@ func (q *PgQueue) selectFirstUnprocessed(tx *sql.Tx) (*p.ProxyRequest, string, e
 	}
 
 	return &proxyRequest, id, nil
+}
+
+func (q *PgQueue) GetUnprocessed() (cnt uint64) {
+	_ = q.db.QueryRow(countUnprocessedSQL).Scan(&cnt)
+	return
+}
+
+func (q *PgQueue) GetTotal() (cnt uint64) {
+	_ = q.db.QueryRow(countTotalSQL).Scan(&cnt)
+	return
 }
