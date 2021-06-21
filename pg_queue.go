@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"github.com/google/uuid"
+	"log"
 	"sync"
 	"time"
 
@@ -73,7 +74,10 @@ func (q *PgQueue) deleteStale(ctx context.Context) {
 			return
 		default:
 			time.Sleep(10 * time.Second)
-			q.db.Exec(deleteStaleSQL)
+			_, err := q.db.Exec(deleteStaleSQL)
+			if err != nil {
+				log.Println(err)
+			}
 		}
 	}
 }
@@ -106,13 +110,6 @@ func (q *PgQueue) EnqueueRequest(r *p.ProxyRequest) error {
 }
 
 func (q *PgQueue) DequeueRequest() (*p.ProxyRequest, error) {
-	var (
-		anything     bool
-		id           string
-		proxyRequest p.ProxyRequest
-		headers      []byte
-	)
-
 	q.Lock()
 	defer q.Unlock()
 
@@ -121,43 +118,12 @@ func (q *PgQueue) DequeueRequest() (*p.ProxyRequest, error) {
 		return nil, err
 	}
 
-	for !anything {
-		rows, err := tx.Query(selectSQL)
-		if err != nil {
-			return nil, err
-		}
-		defer rows.Close()
-
-		for rows.Next() {
-			anything = true
-			err = rows.Scan(
-				&id,
-				&proxyRequest.Method,
-				&headers,
-				&proxyRequest.Body,
-				&proxyRequest.OriginURL,
-			)
-			if err != nil {
-				return nil, err
-			}
-		}
-		if !anything {
-			time.Sleep(100 * time.Millisecond)
-		}
-	}
-
-	err = json.Unmarshal(headers, &proxyRequest.Header)
+	proxyRequest, id, err := q.selectFirstUnprocessed(tx)
 	if err != nil {
 		return nil, err
 	}
 
-	statement, err := tx.Prepare(setStaleSQL)
-	if err != nil {
-		return nil, err
-	}
-	defer statement.Close()
-
-	_, err = statement.Exec(id)
+	_, err = tx.Exec(setStaleSQL, id)
 	if err != nil {
 		return nil, err
 	}
@@ -167,5 +133,47 @@ func (q *PgQueue) DequeueRequest() (*p.ProxyRequest, error) {
 		return nil, err
 	}
 
-	return &proxyRequest, nil
+	return proxyRequest, nil
+}
+
+func (q *PgQueue) selectFirstUnprocessed(tx *sql.Tx) (*p.ProxyRequest, string, error) {
+	var (
+		ready        bool
+		id           string
+		headers      []byte
+		proxyRequest p.ProxyRequest
+		err          error
+	)
+
+	for !ready {
+		rows, err := tx.Query(selectSQL)
+		if err != nil {
+			return nil, id, err
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			ready = true
+			err = rows.Scan(
+				&id,
+				&proxyRequest.Method,
+				&headers,
+				&proxyRequest.Body,
+				&proxyRequest.OriginURL,
+			)
+			if err != nil {
+				return nil, id, err
+			}
+		}
+		if !ready {
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+
+	err = json.Unmarshal(headers, &proxyRequest.Header)
+	if err != nil {
+		return nil, id, err
+	}
+
+	return &proxyRequest, id, nil
 }

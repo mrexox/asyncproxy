@@ -4,16 +4,12 @@ import (
 	"context"
 	"log"
 	"net/http"
-	"net/url"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/viper"
 
 	p "github.com/evilmartians/asyncproxy/proxy"
@@ -26,34 +22,7 @@ var (
 	status          int // e.g. 200
 	shutdownTimeout time.Duration
 
-	queue        *PgQueue
-	queueEnabled bool
-	queueWorkers int
-
-	// Metrics
-	prometheusHandler http.Handler
-	prometheusPath    string
-
-	requestsCounter = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "http_requests_total",
-		Help: "Number of requests.",
-	}, []string{"path"})
-
-	requestDurationBuckets = []float64{
-		0.001, .005, 0.01, .025, 0.05, 0.1, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300,
-	}
-
-	requestsDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Name:    "http_response_time_seconds",
-		Help:    "Response time.",
-		Buckets: requestDurationBuckets,
-	}, []string{"path"})
-
-	proxyRequestsDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Name:    "http_proxy_response_time_seconds",
-		Help:    "Proxy request response time.",
-		Buckets: requestDurationBuckets,
-	}, []string{"path", "status"})
+	worker *Worker
 )
 
 func init() {
@@ -77,43 +46,10 @@ func init() {
 	status = viper.GetInt("server.response_status")
 	shutdownTimeout = time.Duration(viper.GetInt("server.shutdown_timeout")) * time.Second
 
-	prometheusHandler = promhttp.Handler()
-	prometheusPath = viper.GetString("metrics.path")
+	proxy = p.InitProxy(viper.GetViper())
+	worker = InitWorker(viper.GetViper())
 
-	remoteURL, err := url.Parse(viper.GetString("proxy.remote_url"))
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	proxy, err = p.NewProxy(
-		&p.ProxyConfig{
-			RemoteHost:     remoteURL.Host,
-			RemoteScheme:   remoteURL.Scheme,
-			NumClients:     viper.GetInt("proxy.num_clients"),
-			RequestTimeout: time.Duration(viper.GetInt("proxy.request_timeout")),
-		},
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	queueEnabled = viper.GetBool("queue.enabled")
-	if queueEnabled {
-		log.Printf("Queueing enabled")
-
-		queue, err = NewPgQueue(
-			viper.GetString("db.connection_string"),
-			viper.GetInt("db.max_connections"),
-		)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		queueWorkers = viper.GetInt("queue.workers")
-		if queueWorkers < 1 {
-			log.Fatal("workers count cannot be less than 1")
-		}
-	}
+	InitMetrics(viper.GetViper())
 }
 
 func main() {
@@ -128,16 +64,22 @@ func main() {
 
 	srv.SetKeepAlivesEnabled(false)
 
-	var worker *Worker
-	if queueEnabled {
-		worker = NewWorker(queueWorkers, queue, sendRequestToRemote)
+	if worker != nil {
 		worker.Run()
 	}
 
-	// Run server
+	// Run metrics server
+	metricsSrv := GetMetricsServer()
+	go func() {
+		if err := metricsSrv.ListenAndServe(); err != http.ErrServerClosed {
+			log.Printf("server error: %v", err)
+		}
+	}()
+
+	// Run proxying server
 	go func() {
 		if err := srv.ListenAndServe(); err != http.ErrServerClosed {
-			log.Printf("server error: %v", err)
+			log.Printf("metrics server error: %v", err)
 		}
 	}()
 
@@ -161,8 +103,18 @@ func main() {
 		log.Printf("Gracefully stopped server")
 	}
 
+	if err := metricsSrv.Shutdown(gracefulCtx); err != nil {
+		log.Fatal(err)
+	} else {
+		log.Printf("Gracefully stopped metrics")
+	}
+
 	if worker != nil {
-		worker.Shutdown()
+		if err := worker.Shutdown(gracefulCtx); err != nil {
+			log.Fatal(err)
+		} else {
+			log.Printf("Gracefully stopped worker")
+		}
 	}
 
 	if err := proxy.Shutdown(gracefulCtx); err != nil {
@@ -170,27 +122,19 @@ func main() {
 	} else {
 		log.Printf("Gracefully stopped proxy")
 	}
-
-	if queue == nil {
-		return
-	}
-
-	if err := queue.Shutdown(); err != nil {
-		log.Fatal(err)
-	} else {
-		log.Printf("Gracefully closed queue")
-	}
 }
 
 func (h asyncProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	trackRequest(r)
+
+	start := time.Now()
+
 	log.Printf("<- %s %s (%s)", r.Method, r.RequestURI, r.RemoteAddr)
 
 	if r.URL.Path == prometheusPath {
-		prometheusHandler.ServeHTTP(w, r)
+		handleMetrics(w, r)
 		return
 	}
-
-	timer := prometheus.NewTimer(requestsDuration.WithLabelValues(r.URL.Path))
 
 	pRequest, err := p.NewProxyRequest(r)
 	if err != nil {
@@ -202,12 +146,12 @@ func (h asyncProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	go proxyRequest(*pRequest)
 
 	w.WriteHeader(status)
-	timer.ObserveDuration()
+	trackRequestDuration(start, r)
 }
 
 func proxyRequest(r p.ProxyRequest) {
-	if queueEnabled {
-		err := queue.EnqueueRequest(&r)
+	if worker != nil {
+		err := worker.Enqueue(&r)
 		if err == nil {
 			return
 		} else {
@@ -221,7 +165,7 @@ func proxyRequest(r p.ProxyRequest) {
 func sendRequestToRemote(r *p.ProxyRequest) {
 	var res string
 
-	begin := time.Now()
+	start := time.Now()
 
 	if err := proxy.Do(r); err == nil {
 		res = "OK"
@@ -230,7 +174,5 @@ func sendRequestToRemote(r *p.ProxyRequest) {
 		log.Println(res)
 	}
 
-	proxyRequestsDuration.
-		WithLabelValues(r.OriginURL, res).
-		Observe(time.Since(begin).Seconds())
+	trackProxyRequestDuration(start, r, res)
 }

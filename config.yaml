@@ -2,15 +2,17 @@ server:
   bind: :8080
   response_status: 200
   shutdown_timeout: 30 # seconds
+metrics:
+  bind: :8081
+  path: /metrics
 proxy:
   remote_url: http://localhost:5000
-  num_clients: 300
   request_timeout: 120 # seconds
+  num_clients: 700
 queue:
   enabled: true
-  workers: 150
+  workers: 30
+  handle_per_second: 30
 db:
   connection_string: 'host=localhost port=5432 user=postgres password=postgres dbname=asyncproxy sslmode=disable'
   max_connections: 10
-metrics:
-  path: /metrics

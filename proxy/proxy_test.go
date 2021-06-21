@@ -9,18 +9,18 @@ func TestNewProxy(t *testing.T) {
 	var err error
 
 	// Success case
-	_, err = NewProxy(&ProxyConfig{
-		NumClients:     2,
-		RequestTimeout: 10,
+	_, err = New(&config{
+		numClients:     2,
+		requestTimeout: 10,
 	})
 	if err != nil {
 		t.Errorf("wanted: nil, got: %s", err)
 	}
 
 	// Bad NumClients
-	_, err = NewProxy(&ProxyConfig{
-		NumClients:     0,
-		RequestTimeout: 10,
+	_, err = New(&config{
+		numClients:     0,
+		requestTimeout: 10,
 	})
 	if err == nil {
 		t.Errorf("must fail if numClients < 1")
@@ -54,16 +54,13 @@ func TestHandleRequest(t *testing.T) {
 	}
 
 	wp := &Proxy{
-		make(chan struct{}, 1),
-		&http.Client{
+		fdLimiter: make(chan struct{}, 1),
+		client: &http.Client{
 			Transport: transport,
 		},
-		&ProxyConfig{
-			RemoteHost:     "remote",
-			RemoteScheme:   "http",
-			NumClients:     1,
-			RequestTimeout: 10,
-		},
+
+		remoteHost:   "remote",
+		remoteScheme: "http",
 	}
 
 	// POST request successfully forwarded

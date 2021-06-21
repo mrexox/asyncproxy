@@ -5,70 +5,104 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"time"
+
+	"github.com/spf13/viper"
 )
 
+// Proxy handles proxy requests.
+// It controls the number of parallel requests made.
 type Proxy struct {
-	balancer chan struct{}
-	client   *http.Client
-	*ProxyConfig
+	client    *http.Client
+	fdLimiter chan struct{}
+
+	remoteHost, remoteScheme string
 }
 
-type ProxyConfig struct {
-	RemoteHost     string
-	RemoteScheme   string
-	NumClients     int
-	RequestTimeout time.Duration
+// config configures a proxy.
+type config struct {
+	remoteHost     string
+	remoteScheme   string
+	numClients     int
+	requestTimeout time.Duration
 }
 
-func NewProxy(cfg *ProxyConfig) (*Proxy, error) {
-	if cfg.NumClients < 1 {
+// InitProxy applies viper configuration to init a proxy instance.
+func InitProxy(v *viper.Viper) *Proxy {
+	remoteURL, err := url.Parse(v.GetString("proxy.remote_url"))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	proxy, err := New(
+		&config{
+			remoteHost:     remoteURL.Host,
+			remoteScheme:   remoteURL.Scheme,
+			numClients:     v.GetInt("proxy.num_clients"),
+			requestTimeout: time.Duration(v.GetInt("proxy.request_timeout")),
+		},
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return proxy
+}
+
+func New(cfg *config) (*Proxy, error) {
+	if cfg.numClients < 1 {
 		return nil, fmt.Errorf("number of clients must be >= 1")
 	}
 
-	log.Printf("Redirecting to: %s://%s", cfg.RemoteScheme, cfg.RemoteHost)
-	log.Printf("Number of concurrent clients: %d", cfg.NumClients)
+	log.Printf("Redirecting to: %s://%s", cfg.remoteScheme, cfg.remoteHost)
+	log.Printf("Number of concurrent clients: %d", cfg.numClients)
 
 	return &Proxy{
-		make(chan struct{}, cfg.NumClients),
-		&http.Client{
-			Timeout: cfg.RequestTimeout * time.Second,
+		client: &http.Client{
+			Timeout: cfg.requestTimeout * time.Second,
 		},
-		cfg,
+		fdLimiter:    make(chan struct{}, cfg.numClients),
+		remoteHost:   cfg.remoteHost,
+		remoteScheme: cfg.remoteScheme,
 	}, nil
 }
 
+// Do sends the ProxyRequest limiting the number of parallel requests
 func (p *Proxy) Do(r *ProxyRequest) error {
-	// Without balancing goroutines will eat all available file descriptors
-	p.balancer <- struct{}{}
-	defer func() { <-p.balancer }()
-
 	httpReq, err := r.ToHTTPRequest(p)
 	if err != nil {
 		return fmt.Errorf("request error: %s", err)
 	}
 
-	if err := p.sendRequest(httpReq); err != nil {
+	// Without file descriptor limiting goroutines might eat all file descriptors
+	p.fdLimiter <- struct{}{}
+	defer func() { <-p.fdLimiter }()
+
+	if err = p.doRequest(httpReq); err != nil {
 		return err
 	}
 
 	return nil
 }
 
+// Shutdown gracefully waits for running requests to finish.
+// Or returns an error if context is down.
 func (p *Proxy) Shutdown(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
-			if len(p.balancer) == 0 {
+			if len(p.fdLimiter) == 0 {
 				return nil
 			}
 		}
 	}
 }
 
-func (p *Proxy) sendRequest(r *http.Request) error {
+// doRequest actually performs the HTTP requests.
+func (p *Proxy) doRequest(r *http.Request) error {
 	reqURL := r.URL.String()
 	log.Printf("-> %s %s", r.Method, reqURL)
 

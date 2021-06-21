@@ -48,8 +48,8 @@ func (pr *ProxyRequest) ToHTTPRequest(p *Proxy) (*http.Request, error) {
 		return nil, err
 	}
 
-	reqURL.Host = p.RemoteHost
-	reqURL.Scheme = p.RemoteScheme
+	reqURL.Host = p.remoteHost
+	reqURL.Scheme = p.remoteScheme
 
 	httpReq, err := http.NewRequest(pr.Method, reqURL.String(), bodyReader)
 	if err != nil {

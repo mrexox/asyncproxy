@@ -34,8 +34,9 @@ PROXY_REMOTE_URL=http://localhost:5001
 |`server.response_status` | the return code for incoming requests. |
 |`server.shutdown_timeout`| the time in seconds you give the service to complete the requests and gracefully shutdown |
 |`proxy.remote_url`       | base URL for the destination server (must contain http(s):// prefix) |
-|`proxy.num_clients`      | numbe of concurrent clients (goroutines) proxying the requests. The more the number is - the more file descriptors will be borrowed by process. That's why it should be limited. |
 |`proxy.request_timeout`  | the time in seconds each requests will be waiting for the response. This controls for how long one file descriptor is borrowed by process. |
+|`proxy.num_clients`      | numbe of concurrent clients (goroutines) proxying the requests. The more the number is - the more file descriptors will be borrowed by process. That's why it should be limited. |
+|`proxy.max_requests_per_second`  | Outgoing requests per second limit. |
 |`queue.enabled`          | enable queueing requests: saving data, so service restarts won't lose the unprocessed requests |
 |`queue.workers`          | number of workers processing the queue |
 |`db.connection_string`   | database connection string |
