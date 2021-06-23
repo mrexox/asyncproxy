@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/spf13/viper"
 	"go.uber.org/ratelimit"
@@ -89,6 +90,9 @@ func (w *Worker) Run() {
 	for i := 0; i < w.numWorkers; i++ {
 		go w.run()
 	}
+
+	// Clean queue asynchronously
+	go w.cleanQueue()
 }
 
 // Shutdown gracefully stops workers
@@ -133,6 +137,10 @@ func (w *Worker) run() {
 				defer func() { <-w.requests }()
 
 				request, err := w.queue.DequeueRequest()
+				if err == EmptyQueueError {
+					time.Sleep(10 * time.Second) // small delay before the next try
+					return
+				}
 				if err != nil {
 					log.Printf("queue error: %s", err)
 					return
@@ -140,6 +148,18 @@ func (w *Worker) run() {
 
 				w.handle(request)
 			}()
+		}
+	}
+}
+
+func (w *Worker) cleanQueue() {
+	for {
+		select {
+		case <-w.ctx.Done():
+			return
+		default:
+			time.Sleep(10 * time.Second)
+			w.queue.DeleteStale()
 		}
 	}
 }

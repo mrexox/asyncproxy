@@ -69,12 +69,7 @@ func main() {
 	}
 
 	// Run metrics server
-	metricsSrv := GetMetricsServer()
-	go func() {
-		if err := metricsSrv.ListenAndServe(); err != http.ErrServerClosed {
-			log.Printf("server error: %v", err)
-		}
-	}()
+	go RunMetricsServer()
 
 	// Run proxying server
 	go func() {
@@ -103,7 +98,7 @@ func main() {
 		log.Printf("Gracefully stopped server")
 	}
 
-	if err := metricsSrv.Shutdown(gracefulCtx); err != nil {
+	if err := ShutdownMetricsServer(gracefulCtx); err != nil {
 		log.Fatal(err)
 	} else {
 		log.Printf("Gracefully stopped metrics")

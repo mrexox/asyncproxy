@@ -1,13 +1,13 @@
 package main
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"github.com/google/uuid"
 	"log"
 	"sync"
-	"time"
 
 	_ "github.com/lib/pq"
 
@@ -47,10 +47,13 @@ const (
   `
 )
 
+var (
+	EmptyQueueError = errors.New("queue is empty")
+)
+
 type PgQueue struct {
 	sync.RWMutex
-	db       *sql.DB
-	shutdown context.CancelFunc
+	db *sql.DB
 }
 
 func NewPgQueue(connString string, maxConns int) (*PgQueue, error) {
@@ -66,31 +69,19 @@ func NewPgQueue(connString string, maxConns int) (*PgQueue, error) {
 		return nil, err
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	queue := &PgQueue{db: db, shutdown: cancel}
-
-	go queue.deleteStale(ctx)
+	queue := &PgQueue{db: db}
 
 	return queue, nil
 }
 
-func (q *PgQueue) deleteStale(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-			time.Sleep(10 * time.Second)
-			_, err := q.db.Exec(deleteStaleSQL)
-			if err != nil {
-				log.Println(err)
-			}
-		}
+func (q *PgQueue) DeleteStale() {
+	_, err := q.db.Exec(deleteStaleSQL)
+	if err != nil {
+		log.Println(err)
 	}
 }
 
 func (q *PgQueue) Shutdown() error {
-	q.shutdown()
 	q.db.Close()
 
 	return nil
@@ -127,17 +118,24 @@ func (q *PgQueue) DequeueRequest() (*p.ProxyRequest, error) {
 
 	proxyRequest, id, err := q.selectFirstUnprocessed(tx)
 	if err != nil {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			return nil, fmt.Errorf("rollback error: %v: %v", rollbackErr, err)
+		}
+
 		return nil, err
 	}
 
 	_, err = tx.Exec(setStaleSQL, id)
 	if err != nil {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			return nil, fmt.Errorf("rollback error: %v: %v", rollbackErr, err)
+		}
 		return nil, err
 	}
 
 	err = tx.Commit()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("commit error: %v", err)
 	}
 
 	return proxyRequest, nil
@@ -145,36 +143,31 @@ func (q *PgQueue) DequeueRequest() (*p.ProxyRequest, error) {
 
 func (q *PgQueue) selectFirstUnprocessed(tx *sql.Tx) (*p.ProxyRequest, string, error) {
 	var (
-		ready        bool
 		id           string
 		headers      []byte
 		proxyRequest p.ProxyRequest
 		err          error
 	)
 
-	for !ready {
-		rows, err := tx.Query(selectSQL)
+	rows, err := tx.Query(selectSQL)
+	if err != nil {
+		return nil, id, err
+	}
+	defer rows.Close()
+
+	if rows.Next() {
+		err = rows.Scan(
+			&id,
+			&proxyRequest.Method,
+			&headers,
+			&proxyRequest.Body,
+			&proxyRequest.OriginURL,
+		)
 		if err != nil {
 			return nil, id, err
 		}
-		defer rows.Close()
-
-		for rows.Next() {
-			ready = true
-			err = rows.Scan(
-				&id,
-				&proxyRequest.Method,
-				&headers,
-				&proxyRequest.Body,
-				&proxyRequest.OriginURL,
-			)
-			if err != nil {
-				return nil, id, err
-			}
-		}
-		if !ready {
-			time.Sleep(100 * time.Millisecond)
-		}
+	} else {
+		return nil, id, EmptyQueueError
 	}
 
 	err = json.Unmarshal(headers, &proxyRequest.Header)

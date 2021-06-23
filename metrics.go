@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"time"
@@ -17,6 +18,7 @@ var (
 	metricsServer     *http.Server
 	prometheusHandler http.Handler
 	prometheusPath    string
+	queue             *PgQueue
 
 	requestsCounter = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "http_requests_total",
@@ -53,7 +55,8 @@ func InitMetrics(v *viper.Viper) {
 		WriteTimeout: 5 * time.Second,
 	}
 
-	queue, err := NewPgQueue(
+	var err error
+	queue, err = NewPgQueue(
 		v.GetString("db.connection_string"),
 		v.GetInt("db.max_connections"),
 	)
@@ -76,8 +79,21 @@ func InitMetrics(v *viper.Viper) {
 	})
 }
 
-func GetMetricsServer() *http.Server {
-	return metricsServer
+func RunMetricsServer() {
+	if err := metricsServer.ListenAndServe(); err != http.ErrServerClosed {
+		log.Printf("server error: %v", err)
+	}
+}
+
+func ShutdownMetricsServer(ctx context.Context) error {
+	err1 := metricsServer.Shutdown(ctx)
+	err2 := queue.Shutdown()
+
+	if err1 != nil {
+		return err1
+	}
+
+	return err2
 }
 
 func handleMetrics(w http.ResponseWriter, r *http.Request) {
