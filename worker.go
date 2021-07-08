@@ -15,14 +15,12 @@ import (
 type handleFunc func(*p.ProxyRequest)
 
 type Worker struct {
-	stop context.CancelFunc
-
-	ctx        context.Context
 	numWorkers int
 	queue      *PgQueue
 	handle     handleFunc
-	limiter    ratelimit.Limiter
-	requests   chan struct{}
+
+	limiter  ratelimit.Limiter
+	requests chan struct{}
 }
 
 type config struct {
@@ -71,14 +69,10 @@ func NewWorker(cfg *config) (*Worker, error) {
 		return nil, fmt.Errorf("max rps must be >= 1")
 	}
 
-	ctx, ctxCancel := context.WithCancel(context.Background())
-
 	log.Printf("Worker rate limit is: %d per second", cfg.perSecond)
 
 	return &Worker{
-		stop:       ctxCancel,
 		numWorkers: cfg.numWorkers,
-		ctx:        ctx,
 		queue:      cfg.queue,
 		handle:     cfg.handle,
 		limiter:    ratelimit.New(cfg.perSecond),
@@ -86,20 +80,18 @@ func NewWorker(cfg *config) (*Worker, error) {
 	}, nil
 }
 
-func (w *Worker) Run() {
+func (w *Worker) Run(ctx context.Context) {
 	for i := 0; i < w.numWorkers; i++ {
-		go w.run()
+		go w.run(ctx)
 	}
 
 	// Clean queue asynchronously
-	go w.cleanQueue()
+	go w.cleanQueue(ctx)
 }
 
 // Shutdown gracefully stops workers
 func (w *Worker) Shutdown(ctx context.Context) error {
 	log.Printf("Stopping workers...")
-
-	w.stop()
 
 	err := func() error {
 		for {
@@ -124,10 +116,10 @@ func (w *Worker) Enqueue(r *p.ProxyRequest) error {
 	return w.queue.EnqueueRequest(r)
 }
 
-func (w *Worker) run() {
+func (w *Worker) run(ctx context.Context) {
 	for {
 		select {
-		case <-w.ctx.Done():
+		case <-ctx.Done():
 			return
 		default:
 			func() {
@@ -152,10 +144,10 @@ func (w *Worker) run() {
 	}
 }
 
-func (w *Worker) cleanQueue() {
+func (w *Worker) cleanQueue(ctx context.Context) {
 	for {
 		select {
-		case <-w.ctx.Done():
+		case <-ctx.Done():
 			return
 		default:
 			time.Sleep(10 * time.Second)

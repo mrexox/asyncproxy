@@ -64,8 +64,9 @@ func main() {
 
 	srv.SetKeepAlivesEnabled(false)
 
+	ctx, stopWorker := context.WithCancel(context.Background())
 	if worker != nil {
-		worker.Run()
+		worker.Run(ctx)
 	}
 
 	// Run metrics server
@@ -104,6 +105,7 @@ func main() {
 		log.Printf("Gracefully stopped metrics")
 	}
 
+	stopWorker()
 	if worker != nil {
 		if err := worker.Shutdown(gracefulCtx); err != nil {
 			log.Fatal(err)

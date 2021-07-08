@@ -25,7 +25,6 @@ const (
     SELECT id, method, header, body, origin_url
     FROM proxy_requests
     WHERE processed = false
-    ORDER BY timestamp ASC
     LIMIT 1
     FOR UPDATE
     SKIP LOCKED;
