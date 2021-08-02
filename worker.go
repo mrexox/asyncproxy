@@ -12,10 +12,11 @@ import (
 	p "github.com/evilmartians/asyncproxy/proxy"
 )
 
-type handleFunc func(*p.ProxyRequest)
+type handleFunc func(*p.ProxyRequest) error
 
 type Worker struct {
 	numWorkers int
+	maxRetries int
 	queue      *PgQueue
 	handle     handleFunc
 
@@ -28,6 +29,7 @@ type config struct {
 	queue      *PgQueue
 	handle     handleFunc
 	perSecond  int
+	maxRetries int
 }
 
 func InitWorker(v *viper.Viper) *Worker {
@@ -55,6 +57,7 @@ func InitWorker(v *viper.Viper) *Worker {
 			queue:      queue,
 			handle:     sendRequestToRemote,
 			perSecond:  v.GetInt("queue.handle_per_second"),
+			maxRetries: v.GetInt("queue.max_retries"),
 		})
 		if err != nil {
 			log.Fatal(err)
@@ -77,6 +80,7 @@ func NewWorker(cfg *config) (*Worker, error) {
 		handle:     cfg.handle,
 		limiter:    ratelimit.New(cfg.perSecond),
 		requests:   make(chan struct{}, cfg.perSecond),
+		maxRetries: cfg.maxRetries,
 	}, nil
 }
 
@@ -113,7 +117,7 @@ func (w *Worker) Shutdown(ctx context.Context) error {
 }
 
 func (w *Worker) Enqueue(r *p.ProxyRequest) error {
-	return w.queue.EnqueueRequest(r)
+	return w.queue.EnqueueRequest(r, 1)
 }
 
 func (w *Worker) run(ctx context.Context) {
@@ -128,7 +132,7 @@ func (w *Worker) run(ctx context.Context) {
 				w.requests <- struct{}{}
 				defer func() { <-w.requests }()
 
-				request, err := w.queue.DequeueRequest()
+				request, attempt, err := w.queue.DequeueRequest()
 				if err == EmptyQueueError {
 					time.Sleep(10 * time.Second) // small delay before the next try
 					return
@@ -138,7 +142,14 @@ func (w *Worker) run(ctx context.Context) {
 					return
 				}
 
-				w.handle(request)
+				// Try handling the request once again
+				if err := w.handle(request); err != nil {
+					if attempt <= w.maxRetries {
+						w.queue.EnqueueRequest(request, attempt+1)
+					} else {
+						log.Printf("max attempts exceded: %s", request.String())
+					}
+				}
 			}()
 		}
 	}

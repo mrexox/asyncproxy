@@ -17,12 +17,12 @@ import (
 const (
 	insertSQL = `
     INSERT INTO proxy_requests (
-      timestamp, processed, id, method, header, body, origin_url
-    ) VALUES (now(), false, $1, $2, $3, $4, $5);
+      timestamp, processed, id, method, header, body, origin_url, attempt
+    ) VALUES (now(), false, $1, $2, $3, $4, $5, $6);
   `
 
 	selectSQL = `
-    SELECT id, method, header, body, origin_url
+    SELECT id, method, header, body, origin_url, attempt
     FROM proxy_requests
     WHERE processed = false
     LIMIT 1
@@ -53,6 +53,12 @@ var (
 type PgQueue struct {
 	sync.RWMutex
 	db *sql.DB
+}
+
+type record struct {
+	request *p.ProxyRequest
+	id      string
+	attempt int
 }
 
 func NewPgQueue(connString string, maxConns int) (*PgQueue, error) {
@@ -86,7 +92,7 @@ func (q *PgQueue) Shutdown() error {
 	return nil
 }
 
-func (q *PgQueue) EnqueueRequest(r *p.ProxyRequest) error {
+func (q *PgQueue) EnqueueRequest(r *p.ProxyRequest, attempt int) error {
 	statement, err := q.db.Prepare(insertSQL)
 	if err != nil {
 		return err
@@ -98,7 +104,7 @@ func (q *PgQueue) EnqueueRequest(r *p.ProxyRequest) error {
 		return err
 	}
 
-	_, err = statement.Exec(uuid.New(), r.Method, headers, r.Body, r.OriginURL)
+	_, err = statement.Exec(uuid.New(), r.Method, headers, r.Body, r.OriginURL, attempt)
 	if err != nil {
 		return err
 	}
@@ -106,51 +112,52 @@ func (q *PgQueue) EnqueueRequest(r *p.ProxyRequest) error {
 	return nil
 }
 
-func (q *PgQueue) DequeueRequest() (*p.ProxyRequest, error) {
+func (q *PgQueue) DequeueRequest() (*p.ProxyRequest, int, error) {
 	q.Lock()
 	defer q.Unlock()
 
 	tx, err := q.db.Begin()
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	proxyRequest, id, err := q.selectFirstUnprocessed(tx)
+	record, err := q.selectFirstUnprocessed(tx)
 	if err != nil {
 		if rollbackErr := tx.Rollback(); rollbackErr != nil {
-			return nil, fmt.Errorf("rollback error: %v: %v", rollbackErr, err)
+			return nil, 0, fmt.Errorf("rollback error: %v: %v", rollbackErr, err)
 		}
 
-		return nil, err
+		return nil, 0, err
 	}
 
-	_, err = tx.Exec(setStaleSQL, id)
+	_, err = tx.Exec(setStaleSQL, record.id)
 	if err != nil {
 		if rollbackErr := tx.Rollback(); rollbackErr != nil {
-			return nil, fmt.Errorf("rollback error: %v: %v", rollbackErr, err)
+			return nil, 0, fmt.Errorf("rollback error: %v: %v", rollbackErr, err)
 		}
-		return nil, err
+		return nil, 0, err
 	}
 
 	err = tx.Commit()
 	if err != nil {
-		return nil, fmt.Errorf("commit error: %v", err)
+		return nil, 0, fmt.Errorf("commit error: %v", err)
 	}
 
-	return proxyRequest, nil
+	return record.request, record.attempt, nil
 }
 
-func (q *PgQueue) selectFirstUnprocessed(tx *sql.Tx) (*p.ProxyRequest, string, error) {
+func (q *PgQueue) selectFirstUnprocessed(tx *sql.Tx) (record, error) {
 	var (
 		id           string
 		headers      []byte
 		proxyRequest p.ProxyRequest
 		err          error
+		attempt      int
 	)
 
 	rows, err := tx.Query(selectSQL)
 	if err != nil {
-		return nil, id, err
+		return record{}, err
 	}
 	defer rows.Close()
 
@@ -161,20 +168,21 @@ func (q *PgQueue) selectFirstUnprocessed(tx *sql.Tx) (*p.ProxyRequest, string, e
 			&headers,
 			&proxyRequest.Body,
 			&proxyRequest.OriginURL,
+			&attempt,
 		)
 		if err != nil {
-			return nil, id, err
+			return record{}, err
 		}
 	} else {
-		return nil, id, EmptyQueueError
+		return record{}, EmptyQueueError
 	}
 
 	err = json.Unmarshal(headers, &proxyRequest.Header)
 	if err != nil {
-		return nil, id, err
+		return record{}, err
 	}
 
-	return &proxyRequest, id, nil
+	return record{&proxyRequest, id, attempt}, nil
 }
 
 func (q *PgQueue) GetUnprocessed() (cnt uint64) {

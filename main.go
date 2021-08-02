@@ -156,20 +156,26 @@ func proxyRequest(r p.ProxyRequest) {
 		}
 	}
 
-	sendRequestToRemote(&r)
+	if err := sendRequestToRemote(&r); err != nil {
+		log.Printf("error: %s", err)
+	}
 }
 
-func sendRequestToRemote(r *p.ProxyRequest) {
-	var res string
+func sendRequestToRemote(r *p.ProxyRequest) error {
+	var (
+		res string
+		err error
+	)
 
 	start := time.Now()
 
-	if err := proxy.Do(r); err == nil {
+	if err = proxy.Do(r); err == nil {
 		res = "OK"
 	} else {
 		res = err.Error()
-		log.Println(res)
 	}
 
 	trackProxyRequestDuration(start, r, res)
+
+	return err
 }

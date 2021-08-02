@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -60,4 +61,8 @@ func (pr *ProxyRequest) ToHTTPRequest(p *Proxy) (*http.Request, error) {
 	httpReq.Close = true
 
 	return httpReq, nil
+}
+
+func (pr *ProxyRequest) String() string {
+	return fmt.Sprintf("%s %s", pr.Method, pr.OriginURL)
 }

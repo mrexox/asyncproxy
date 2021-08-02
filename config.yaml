@@ -13,6 +13,7 @@ queue:
   enabled: true
   workers: 30
   handle_per_second: 30
+  max_retries: 1000
 db:
   connection_string: 'host=localhost port=5432 user=postgres password=postgres dbname=asyncproxy sslmode=disable'
   max_connections: 2
