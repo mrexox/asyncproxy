@@ -41,8 +41,10 @@ PROXY_REMOTE_URL=http://localhost:5001
 |`queue.enabled`          | enable queueing requests: saving data, so service restarts won't lose the unprocessed requests |
 |`queue.workers`          | number of workers processing the queue |
 |`queue.handle_per_second`| Limit for fetching requests from DB |
+|`queue.max_retries`      | Maximum number of attempts to resend the request if the previous wasn't successful |
 |`db.connection_string`   | database connection string |
 |`db.max_connections`     | max open connections to database allowed |
+|`ignore_events`          | List of NotificationEventName-s to ignore in the body (for odd eBay Notifications) |
 
 ### Configuration aspects
 

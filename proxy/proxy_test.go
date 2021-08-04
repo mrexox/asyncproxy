@@ -88,3 +88,20 @@ func TestHandleRequest(t *testing.T) {
 	}
 
 }
+
+func TestProxyRequestMatchEvent(t *testing.T) {
+	request := &ProxyRequest{
+		Header:    map[string][]string{},
+		Method:    "POST",
+		Body:      []byte(`<NotificationEventName> Value </NotificationEventName>`),
+		OriginURL: "https://nevergone.com/endpoint",
+	}
+
+	if request.MatchEvent("Value") != true {
+		t.Errorf("expected to match Value notification event")
+	}
+
+	if request.MatchEvent("Val(ue") != false {
+		t.Errorf("expected to return false if given event is bad for regexp")
+	}
+}
