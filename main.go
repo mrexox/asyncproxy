@@ -21,7 +21,6 @@ var (
 	proxy           *p.Proxy
 	status          int // e.g. 200
 	shutdownTimeout time.Duration
-	unwantedEvents  []string
 
 	worker *Worker
 )
@@ -45,7 +44,6 @@ func init() {
 	}
 
 	status = viper.GetInt("server.response_status")
-	unwantedEvents = viper.GetStringSlice("ignore_events")
 	shutdownTimeout = time.Duration(viper.GetInt("server.shutdown_timeout")) * time.Second
 
 	proxy = p.InitProxy(viper.GetViper())
@@ -149,13 +147,6 @@ func (h asyncProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func proxyRequest(r p.ProxyRequest) {
-	for _, unwantedEvent := range unwantedEvents {
-		if r.MatchEvent(unwantedEvent) {
-			log.Printf("ignoring unwanted event %s", unwantedEvent)
-			return
-		}
-	}
-
 	if worker != nil {
 		err := worker.Enqueue(&r)
 		if err == nil {

@@ -44,7 +44,6 @@ PROXY_REMOTE_URL=http://localhost:5001
 |`queue.max_retries`      | Maximum number of attempts to resend the request if the previous wasn't successful |
 |`db.connection_string`   | database connection string |
 |`db.max_connections`     | max open connections to database allowed |
-|`ignore_events`          | List of NotificationEventName-s to ignore in the body (for odd eBay Notifications) |
 
 ### Configuration aspects
 
