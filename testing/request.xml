@@ -1,0 +1,175 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="https://www.w3.org/2001/XMLSchema-instance">
+  <soapenv:Header>
+    <ebl:RequesterCredentials soapenv:mustUnderstand="0" xmlns:ns="urn:ebay:apis:eBLBaseComponents"
+        xmlns:ebl="urn:ebay:apis:eBLBaseComponents">
+      <ebl:NotificationSignature xmlns:ebl="urn:ebay:apis:eBLBaseComponents">U5z13QD8P6tQw2U0Oq9Kwg==</ebl:NotificationSignature>
+    </ebl:RequesterCredentials>
+  </soapenv:Header>
+  <soapenv:Body>
+    <GetItemResponse xmlns="urn:ebay:apis:eBLBaseComponents">
+      <Timestamp>2021-10-14T11:42:32Z</Timestamp>
+      <Ack>Success</Ack>
+      <CorrelationID>476457080</CorrelationID>
+      <Version>699</Version>
+      <Build>E699_CORE_BUNDLED_12457306_R1</Build>
+      <NotificationEventName>ItemRevised</NotificationEventName>
+      <RecipientUserID>15af16ed9d13c868941ea8fe16117da9</RecipientUserID>
+      <EIASToken>15af16ed9d13c868941ea8fe16117da9</EIASToken>
+      <Item>
+        <AutoPay>false</AutoPay>
+        <BuyerProtection>ItemIneligible</BuyerProtection>
+        <BuyItNowPrice currencyID="USD">0.0</BuyItNowPrice>
+        <Country>US</Country>
+        <Currency>USD</Currency>
+        <GiftIcon>0</GiftIcon>
+        <HitCounter>NoHitCounter</HitCounter>
+        <ItemID>F-216-14</ItemID>
+        <ListingDetails>
+          <Adult>false</Adult>
+          <BindingAuction>false</BindingAuction>
+          <CheckoutEnabled>true</CheckoutEnabled>
+          <ConvertedBuyItNowPrice currencyID="USD">0.0</ConvertedBuyItNowPrice>
+          <ConvertedStartPrice currencyID="USD">1.0</ConvertedStartPrice>
+          <ConvertedReservePrice currencyID="USD">0.0</ConvertedReservePrice>
+          <HasReservePrice>false</HasReservePrice>
+          <StartTime>2011-01-06T08:07:54.000Z</StartTime>
+          <EndTime>2011-01-13T08:07:54.000Z</EndTime>
+          <HasUnansweredQuestions>false</HasUnansweredQuestions>
+          <HasPublicMessages>false</HasPublicMessages>
+        </ListingDetails>
+        <ListingDuration>Days_7</ListingDuration>
+        <ListingType>Chinese</ListingType>
+        <Location>San Jose, California</Location>
+        <PaymentMethods>PayPal</PaymentMethods>
+        <PayPalEmailAddress>magicalbookseller@yahoo.com</PayPalEmailAddress>
+        <PrimaryCategory>
+          <CategoryID>377</CategoryID>
+          <CategoryName>Books:Fiction &amp; Literature</CategoryName>
+        </PrimaryCategory>
+        <PrivateListing>false</PrivateListing>
+        <Quantity>1</Quantity>
+        <ReservePrice currencyID="USD">0.0</ReservePrice>
+        <ReviseStatus>
+          <ItemRevised>false</ItemRevised>
+        </ReviseStatus>
+        <Seller>
+          <AboutMePage>false</AboutMePage>
+          <Email>testuser_magicalbookseller@yahoo.com</Email>
+          <FeedbackScore>31</FeedbackScore>
+          <PositiveFeedbackPercent>100.0</PositiveFeedbackPercent>
+          <FeedbackPrivate>false</FeedbackPrivate>
+          <FeedbackRatingStar>Yellow</FeedbackRatingStar>
+          <IDVerified>true</IDVerified>
+          <eBayGoodStanding>true</eBayGoodStanding>
+          <NewUser>false</NewUser>
+          <RegistrationDate>2010-01-01T00:00:00.000Z</RegistrationDate>
+          <Site>US</Site>
+          <Status>Confirmed</Status>
+          <UserID>15af16ed9d13c868941ea8fe16117da9</UserID>
+          <UserIDChanged>false</UserIDChanged>
+          <UserIDLastChanged>2007-11-29T18:43:54.000Z</UserIDLastChanged>
+          <VATStatus>NoVATTax</VATStatus>
+          <SellerInfo>
+            <AllowPaymentEdit>true</AllowPaymentEdit>
+            <CheckoutEnabled>true</CheckoutEnabled>
+            <CIPBankAccountStored>false</CIPBankAccountStored>
+            <GoodStanding>true</GoodStanding>
+            <LiveAuctionAuthorized>false</LiveAuctionAuthorized>
+            <MerchandizingPref>OptIn</MerchandizingPref>
+            <QualifiesForB2BVAT>false</QualifiesForB2BVAT>
+            <StoreOwner>true</StoreOwner>
+            <StoreURL>http://www.stores.sandbox.ebay.com/id=132854966</StoreURL>
+            <SafePaymentExempt>false</SafePaymentExempt>
+          </SellerInfo>
+          <MotorsDealer>false</MotorsDealer>
+        </Seller>
+        <SellingStatus>
+          <BidCount>0</BidCount>
+          <BidIncrement currencyID="USD">0.25</BidIncrement>
+          <ConvertedCurrentPrice currencyID="USD">1.0</ConvertedCurrentPrice>
+          <CurrentPrice currencyID="USD">1.0</CurrentPrice>
+          <LeadCount>0</LeadCount>
+          <MinimumToBid currencyID="USD">1.0</MinimumToBid>
+          <QuantitySold>0</QuantitySold>
+          <ReserveMet>true</ReserveMet>
+          <SecondChanceEligible>false</SecondChanceEligible>
+          <ListingStatus>Active</ListingStatus>
+        </SellingStatus>
+        <ShippingDetails>
+          <ApplyShippingDiscount>false</ApplyShippingDiscount>
+          <CalculatedShippingRate>
+            <OriginatingPostalCode>95125</OriginatingPostalCode>
+            <PackageDepth measurementSystem="English" unit="inches">2</PackageDepth>
+            <PackageLength measurementSystem="English" unit="inches">10</PackageLength>
+            <PackageWidth measurementSystem="English" unit="inches">7</PackageWidth>
+            <PackagingHandlingCosts currencyID="USD">0.0</PackagingHandlingCosts>
+            <ShippingIrregular>false</ShippingIrregular>
+            <ShippingPackage>PackageThickEnvelope</ShippingPackage>
+            <WeightMajor measurementSystem="English" unit="lbs">2</WeightMajor>
+            <WeightMinor measurementSystem="English" unit="oz">0</WeightMinor>
+          </CalculatedShippingRate>
+          <SalesTax>
+            <SalesTaxPercent>0.0</SalesTaxPercent>
+            <ShippingIncludedInTax>false</ShippingIncludedInTax>
+          </SalesTax>
+          <ShippingServiceOptions>
+            <ShippingService>USPSMedia</ShippingService>
+            <ShippingServicePriority>1</ShippingServicePriority>
+            <ExpeditedService>false</ExpeditedService>
+            <ShippingTimeMin>2</ShippingTimeMin>
+            <ShippingTimeMax>9</ShippingTimeMax>
+          </ShippingServiceOptions>
+          <ShippingType>Calculated</ShippingType>
+          <ThirdPartyCheckout>false</ThirdPartyCheckout>
+          <ExcludeShipToLocation>Asia</ExcludeShipToLocation>
+          <ExcludeShipToLocation>Middle East</ExcludeShipToLocation>
+          <ExcludeShipToLocation>Southeast Asia</ExcludeShipToLocation>
+          <SellerExcludeShipToLocationsPreference>true</SellerExcludeShipToLocationsPreference>
+        </ShippingDetails>
+        <ShipToLocations>US</ShipToLocations>
+        <Site>US</Site>
+        <StartPrice currencyID="USD">1.0</StartPrice>
+        <Storefront>
+          <StoreCategoryID>1</StoreCategoryID>
+          <StoreCategory2ID>0</StoreCategory2ID>
+          <StoreURL>http://www.stores.sandbox.ebay.com/id=132854966</StoreURL>
+        </Storefront>
+        <TimeLeft>P6DT23H59M42S</TimeLeft>
+        <Title>Harry Potter and the Philosopher&apos;s Stone</Title>
+        <UUID>CD751A9973E249ABB880E1B2DF65B50B</UUID>
+        <HitCount>0</HitCount>
+        <LocationDefaulted>true</LocationDefaulted>
+        <GetItFast>false</GetItFast>
+        <PostalCode>95125</PostalCode>
+        <PictureDetails>
+          <GalleryType>Gallery</GalleryType>
+          <GalleryURL>http://i1.sandbox.ebayimg.com/03/i/00/3e/60/d7_1.JPG?set_id=8800005007</GalleryURL>
+          <PhotoDisplay>PicturePack</PhotoDisplay>
+          <PictureURL>http://i1.sandbox.ebayimg.com/03/i/00/3e/60/d7_1.JPG?set_id=8800005007</PictureURL>
+        </PictureDetails>
+        <DispatchTimeMax>3</DispatchTimeMax>
+        <ProxyItem>false</ProxyItem>
+        <BuyerGuaranteePrice currencyID="USD">20000.0</BuyerGuaranteePrice>
+        <IntangibleItem>false</IntangibleItem>
+        <ReturnPolicy>
+          <RefundOption>MoneyBack</RefundOption>
+          <Refund>Money Back</Refund>
+          <ReturnsWithinOption>Days_30</ReturnsWithinOption>
+          <ReturnsWithin>30 Days</ReturnsWithin>
+          <ReturnsAcceptedOption>ReturnsAccepted</ReturnsAcceptedOption>
+          <ReturnsAccepted>Returns Accepted</ReturnsAccepted>
+          <Description>This is the first book in the Harry Potter series. In excellent condition!</Description>
+          <ShippingCostPaidByOption>Buyer</ShippingCostPaidByOption>
+          <ShippingCostPaidBy>Buyer</ShippingCostPaidBy>
+        </ReturnPolicy>
+        <PaymentAllowedSite>eBayMotors</PaymentAllowedSite>
+        <PaymentAllowedSite>CanadaFrench</PaymentAllowedSite>
+        <PaymentAllowedSite>Canada</PaymentAllowedSite>
+        <PaymentAllowedSite>US</PaymentAllowedSite>
+        <ConditionID>1000</ConditionID>
+        <ConditionDisplayName>Brand New</ConditionDisplayName>
+      </Item>
+    </GetItemResponse>
+  </soapenv:Body>
+</soapenv:Envelope>

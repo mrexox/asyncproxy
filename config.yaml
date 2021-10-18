@@ -11,7 +11,7 @@ proxy:
   num_clients: 700
 queue:
   enabled: true
-  workers: 30
+  workers: 20
   handle_per_second: 30
   max_retries: 1000
 db:

@@ -7,7 +7,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
-	"regexp"
 )
 
 // Need to store HTTP request properties to allow goroutines handle
@@ -62,16 +61,6 @@ func (pr *ProxyRequest) ToHTTPRequest(p *Proxy) (*http.Request, error) {
 	httpReq.Close = true
 
 	return httpReq, nil
-}
-
-func (pr *ProxyRequest) MatchEvent(event string) bool {
-	expression := fmt.Sprintf(`NotificationEventName>\s*%s\s*</NotificationEventName`, event)
-	res, err := regexp.Match(expression, pr.Body)
-	if err != nil {
-		return false
-	}
-
-	return res
 }
 
 func (pr *ProxyRequest) String() string {

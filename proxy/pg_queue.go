@@ -1,46 +1,35 @@
-package main
+package proxy
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/google/uuid"
-	"log"
-	"sync"
 
 	_ "github.com/lib/pq"
-
-	p "github.com/evilmartians/asyncproxy/proxy"
 )
 
 const (
 	insertSQL = `
     INSERT INTO proxy_requests (
-      timestamp, processed, id, method, header, body, origin_url, attempt
-    ) VALUES (now(), false, $1, $2, $3, $4, $5, $6);
+      timestamp, id, method, header, body, origin_url, attempt
+    ) VALUES (now(), $1, $2, $3, $4, $5, $6);
   `
 
 	selectSQL = `
     SELECT id, method, header, body, origin_url, attempt
     FROM proxy_requests
-    WHERE processed = false
     LIMIT 1
     FOR UPDATE
     SKIP LOCKED;
   `
 
-	deleteStaleSQL = `
-    DELETE FROM proxy_requests WHERE processed = 't';
+	deleteSQL = `
+    DELETE FROM proxy_requests WHERE id = $1;
   `
 
-	setStaleSQL = `
-    UPDATE proxy_requests SET processed = true WHERE id = $1;
-  `
-
-	countUnprocessedSQL = `
-    SELECT COUNT(*) FROM proxy_requests WHERE processed = 'f';
-  `
 	countTotalSQL = `
     SELECT COUNT(*) FROM proxy_requests;
   `
@@ -48,15 +37,16 @@ const (
 
 var (
 	EmptyQueueError = errors.New("queue is empty")
+
+	insertStmt, countTotalStmt *sql.Stmt
 )
 
 type PgQueue struct {
-	sync.RWMutex
 	db *sql.DB
 }
 
 type record struct {
-	request *p.ProxyRequest
+	request *ProxyRequest
 	id      string
 	attempt int
 }
@@ -76,35 +66,45 @@ func NewPgQueue(connString string, maxConns int) (*PgQueue, error) {
 
 	queue := &PgQueue{db: db}
 
+	// Optimize insertion using prepared statements
+	insertStmt, err = db.Prepare(insertSQL)
+	if err != nil {
+		return nil, err
+	}
+
+	// Optimize counting using prepared statements
+	countTotalStmt, err = db.Prepare(countTotalSQL)
+	if err != nil {
+		return nil, err
+	}
+
 	return queue, nil
 }
 
-func (q *PgQueue) DeleteStale() {
-	_, err := q.db.Exec(deleteStaleSQL)
-	if err != nil {
-		log.Println(err)
-	}
+func (q *PgQueue) Total() (cnt uint64) {
+	_ = countTotalStmt.QueryRow().Scan(&cnt)
+	return
 }
 
 func (q *PgQueue) Shutdown() error {
+	insertStmt.Close()
+	countTotalStmt.Close()
+
 	q.db.Close()
 
 	return nil
 }
 
-func (q *PgQueue) EnqueueRequest(r *p.ProxyRequest, attempt int) error {
-	statement, err := q.db.Prepare(insertSQL)
-	if err != nil {
-		return err
-	}
-	defer statement.Close()
-
+// Put request into the database
+func (q *PgQueue) EnqueueRequest(r *ProxyRequest, attempt int) error {
 	headers, err := json.Marshal(r.Header)
 	if err != nil {
 		return err
 	}
 
-	_, err = statement.Exec(uuid.New(), r.Method, headers, r.Body, r.OriginURL, attempt)
+	_, err = insertStmt.Exec(
+		uuid.New(), r.Method, headers, r.Body, r.OriginURL, attempt,
+	)
 	if err != nil {
 		return err
 	}
@@ -112,16 +112,17 @@ func (q *PgQueue) EnqueueRequest(r *p.ProxyRequest, attempt int) error {
 	return nil
 }
 
-func (q *PgQueue) DequeueRequest() (*p.ProxyRequest, int, error) {
-	q.Lock()
-	defer q.Unlock()
-
-	tx, err := q.db.Begin()
+// Get request fron the database
+func (q *PgQueue) DequeueRequest() (*ProxyRequest, int, error) {
+	ctx := context.Background()
+	tx, err := q.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, 0, err
 	}
+	defer tx.Rollback()
 
-	record, err := q.selectFirstUnprocessed(tx)
+	// Get the record
+	record, err := q.selectOne(ctx, tx)
 	if err != nil {
 		if rollbackErr := tx.Rollback(); rollbackErr != nil {
 			return nil, 0, fmt.Errorf("rollback error: %v: %v", rollbackErr, err)
@@ -130,7 +131,8 @@ func (q *PgQueue) DequeueRequest() (*p.ProxyRequest, int, error) {
 		return nil, 0, err
 	}
 
-	_, err = tx.Exec(setStaleSQL, record.id)
+	// Delete the record
+	_, err = tx.ExecContext(ctx, deleteSQL, record.id)
 	if err != nil {
 		if rollbackErr := tx.Rollback(); rollbackErr != nil {
 			return nil, 0, fmt.Errorf("rollback error: %v: %v", rollbackErr, err)
@@ -146,35 +148,31 @@ func (q *PgQueue) DequeueRequest() (*p.ProxyRequest, int, error) {
 	return record.request, record.attempt, nil
 }
 
-func (q *PgQueue) selectFirstUnprocessed(tx *sql.Tx) (record, error) {
+func (q *PgQueue) selectOne(ctx context.Context, tx *sql.Tx) (record, error) {
 	var (
 		id           string
 		headers      []byte
-		proxyRequest p.ProxyRequest
+		proxyRequest ProxyRequest
 		err          error
 		attempt      int
 	)
 
-	rows, err := tx.Query(selectSQL)
-	if err != nil {
-		return record{}, err
-	}
-	defer rows.Close()
+	row := tx.QueryRowContext(ctx, selectSQL)
 
-	if rows.Next() {
-		err = rows.Scan(
-			&id,
-			&proxyRequest.Method,
-			&headers,
-			&proxyRequest.Body,
-			&proxyRequest.OriginURL,
-			&attempt,
-		)
-		if err != nil {
-			return record{}, err
+	err = row.Scan(
+		&id,
+		&proxyRequest.Method,
+		&headers,
+		&proxyRequest.Body,
+		&proxyRequest.OriginURL,
+		&attempt,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return record{}, EmptyQueueError
 		}
-	} else {
-		return record{}, EmptyQueueError
+
+		return record{}, err
 	}
 
 	err = json.Unmarshal(headers, &proxyRequest.Header)
@@ -183,14 +181,4 @@ func (q *PgQueue) selectFirstUnprocessed(tx *sql.Tx) (record, error) {
 	}
 
 	return record{&proxyRequest, id, attempt}, nil
-}
-
-func (q *PgQueue) GetUnprocessed() (cnt uint64) {
-	_ = q.db.QueryRow(countUnprocessedSQL).Scan(&cnt)
-	return
-}
-
-func (q *PgQueue) GetTotal() (cnt uint64) {
-	_ = q.db.QueryRow(countTotalSQL).Scan(&cnt)
-	return
 }

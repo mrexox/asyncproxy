@@ -6,24 +6,16 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
-	"github.com/spf13/viper"
-
-	p "github.com/evilmartians/asyncproxy/proxy"
+	cfg "github.com/evilmartians/asyncproxy/config"
+	proxy "github.com/evilmartians/asyncproxy/proxy"
 )
 
 type asyncProxyHandler struct{}
 
-var (
-	proxy           *p.Proxy
-	status          int // e.g. 200
-	shutdownTimeout time.Duration
-
-	worker *Worker
-)
+var config *cfg.Config
 
 func init() {
 	log.Println("Reading config...")
@@ -33,30 +25,20 @@ func init() {
 		log.Fatal(err)
 	}
 
-	viper.AddConfigPath(path)
-	viper.SetConfigName("config")
-	viper.SetConfigType("yaml")
-	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-	viper.AutomaticEnv()
-
-	if err := viper.ReadInConfig(); err != nil {
+	config, err = cfg.LoadConfig(path)
+	if err != nil {
 		log.Fatal(err)
 	}
 
-	status = viper.GetInt("server.response_status")
-	shutdownTimeout = time.Duration(viper.GetInt("server.shutdown_timeout")) * time.Second
-
-	proxy = p.InitProxy(viper.GetViper())
-	worker = InitWorker(viper.GetViper())
-
-	InitMetrics(viper.GetViper())
+	InitMetrics(config)
+	proxy.InitAsyncProxy(config)
 }
 
 func main() {
 	log.Println("Starting server...")
 
 	srv := &http.Server{
-		Addr:         viper.GetString("server.bind"),
+		Addr:         config.Server.Bind,
 		Handler:      asyncProxyHandler{},
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 5 * time.Second,
@@ -64,15 +46,12 @@ func main() {
 
 	srv.SetKeepAlivesEnabled(false)
 
-	ctx, stopWorker := context.WithCancel(context.Background())
-	if worker != nil {
-		worker.Run(ctx)
-	}
+	proxy.Start()
 
 	// Run metrics server
 	go RunMetricsServer()
 
-	// Run proxying server
+	// Run http server
 	go func() {
 		if err := srv.ListenAndServe(); err != http.ErrServerClosed {
 			log.Printf("metrics server error: %v", err)
@@ -90,7 +69,9 @@ func main() {
 	<-signalChan
 	log.Printf("Shutting down gracefully...")
 
-	gracefulCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	gracefulCtx, cancel := context.WithTimeout(
+		context.Background(), config.Server.ShutdownTimeout*time.Second,
+	)
 	defer cancel()
 
 	if err := srv.Shutdown(gracefulCtx); err != nil {
@@ -99,25 +80,16 @@ func main() {
 		log.Printf("Gracefully stopped server")
 	}
 
+	if err := proxy.Stop(gracefulCtx); err != nil {
+		log.Fatal(err)
+	} else {
+		log.Printf("Gracefully stopped proxy")
+	}
+
 	if err := ShutdownMetricsServer(gracefulCtx); err != nil {
 		log.Fatal(err)
 	} else {
 		log.Printf("Gracefully stopped metrics")
-	}
-
-	stopWorker()
-	if worker != nil {
-		if err := worker.Shutdown(gracefulCtx); err != nil {
-			log.Fatal(err)
-		} else {
-			log.Printf("Gracefully stopped worker")
-		}
-	}
-
-	if err := proxy.Shutdown(gracefulCtx); err != nil {
-		log.Fatal(err)
-	} else {
-		log.Printf("Gracefully stopped proxy")
 	}
 }
 
@@ -133,49 +105,13 @@ func (h asyncProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pRequest, err := p.NewProxyRequest(r)
+	err := proxy.HandleRequest(r)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		log.Println(err)
 		return
 	}
 
-	go proxyRequest(*pRequest)
-
-	w.WriteHeader(status)
+	w.WriteHeader(config.Server.ResponseStatus)
 	trackRequestDuration(start, r)
-}
-
-func proxyRequest(r p.ProxyRequest) {
-	if worker != nil {
-		err := worker.Enqueue(&r)
-		if err == nil {
-			return
-		} else {
-			log.Printf("enqueueing error: %v", err)
-		}
-	}
-
-	if err := sendRequestToRemote(&r); err != nil {
-		log.Printf("error: %s", err)
-	}
-}
-
-func sendRequestToRemote(r *p.ProxyRequest) error {
-	var (
-		res string
-		err error
-	)
-
-	start := time.Now()
-
-	if err = proxy.Do(r); err == nil {
-		res = "OK"
-	} else {
-		res = err.Error()
-	}
-
-	trackProxyRequestDuration(start, r, res)
-
-	return err
 }
