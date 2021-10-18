@@ -1,13 +1,13 @@
 server:
   bind: :8080
   response_status: 200
-  shutdown_timeout: 30 # seconds
+  shutdown_timeout: 30s
 metrics:
   bind: :8081
   path: /metrics
 proxy:
   remote_url: http://localhost:5000
-  request_timeout: 120 # seconds
+  request_timeout: 120s
   num_clients: 700
 queue:
   enabled: true
