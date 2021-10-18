@@ -1,5 +1,5 @@
 # Don't forget to change this var when tagging a commit
-VERSION       := 2.7
+VERSION       := 2.7.1
 IMAGE_NAME    ?= asyncproxy
 
 build:

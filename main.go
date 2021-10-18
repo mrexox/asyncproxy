@@ -10,7 +10,7 @@ import (
 	"time"
 
 	cfg "github.com/evilmartians/asyncproxy/config"
-	proxy "github.com/evilmartians/asyncproxy/proxy"
+	proxyServer "github.com/evilmartians/asyncproxy/server"
 )
 
 type asyncProxyHandler struct{}
@@ -31,7 +31,7 @@ func init() {
 	}
 
 	InitMetrics(config)
-	proxy.InitAsyncProxy(config)
+	proxyServer.Init(config)
 }
 
 func main() {
@@ -46,7 +46,7 @@ func main() {
 
 	srv.SetKeepAlivesEnabled(false)
 
-	proxy.Start()
+	proxyServer.Start()
 
 	// Run metrics server
 	go RunMetricsServer()
@@ -70,7 +70,7 @@ func main() {
 	log.Printf("Shutting down gracefully...")
 
 	gracefulCtx, cancel := context.WithTimeout(
-		context.Background(), config.Server.ShutdownTimeout*time.Second,
+		context.Background(), config.Server.ShutdownTimeout,
 	)
 	defer cancel()
 
@@ -80,7 +80,7 @@ func main() {
 		log.Printf("Gracefully stopped server")
 	}
 
-	if err := proxy.Stop(gracefulCtx); err != nil {
+	if err := proxyServer.Stop(gracefulCtx); err != nil {
 		log.Fatal(err)
 	} else {
 		log.Printf("Gracefully stopped proxy")
@@ -105,7 +105,7 @@ func (h asyncProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := proxy.HandleRequest(r)
+	err := proxyServer.HandleRequest(r)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		log.Println(err)

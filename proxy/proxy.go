@@ -6,7 +6,6 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"time"
 
 	cfg "github.com/evilmartians/asyncproxy/config"
 )
@@ -35,7 +34,7 @@ func NewProxy(config *cfg.Config) *Proxy {
 
 	return &Proxy{
 		client: &http.Client{
-			Timeout: config.Proxy.RequestTimeout * time.Second,
+			Timeout: config.Proxy.RequestTimeout,
 		},
 		fdLimiter:    make(chan struct{}, config.Proxy.NumClients),
 		remoteHost:   remoteURL.Host,

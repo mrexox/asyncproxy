@@ -1,4 +1,4 @@
-package proxy
+package server
 
 import (
 	"context"
@@ -10,16 +10,21 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	cfg "github.com/evilmartians/asyncproxy/config"
+	proxy "github.com/evilmartians/asyncproxy/proxy"
 )
 
 var (
+	// Concurrency limiter. Limits the number of http-created goroutines
+	asyncLimiter chan struct{}
+
+	// Graceful workers shutdown helper
 	stopWorker context.CancelFunc
 
 	// Main worker object to work with proxy requests
-	worker *Worker
+	worker *proxy.Worker
 
 	// Main proxy object to handle the requests
-	proxy *Proxy
+	client *proxy.Proxy
 
 	// Metrics for outgoing requests
 	proxyRequestsDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
@@ -29,10 +34,13 @@ var (
 	}, []string{"path", "status"})
 )
 
-// Init everything related to proxying
-func InitAsyncProxy(config *cfg.Config) {
-	proxy = NewProxy(config)
-	worker = NewWorker(config, SendProxyRequest)
+// Init everything related to asynchronous proxying
+func Init(config *cfg.Config) {
+	log.Printf("Server -- concurrency: %d", config.Server.Concurrency)
+
+	asyncLimiter = make(chan struct{}, config.Server.Concurrency)
+	client = proxy.NewProxy(config)
+	worker = proxy.NewWorker(config, SendProxyRequest)
 }
 
 // Start workers proxying the requests
@@ -47,21 +55,42 @@ func Start() {
 
 // Stop proxying the requests gracefully
 func Stop(ctx context.Context) error {
-	stopWorker()
-	if err := shutdownWorker(ctx); err != nil {
+	log.Printf("Stopping proxying...")
+
+	err := func() error {
+		for {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+				if len(asyncLimiter) == 0 {
+					return nil
+				}
+			}
+		}
+	}()
+	if err != nil {
 		return err
 	}
 
-	return proxy.Shutdown(ctx)
+	stopWorker()
+	if err = shutdownWorker(ctx); err != nil {
+		return err
+	}
+
+	return client.Shutdown(ctx)
 }
 
 // Handle http request: convert it into the proxy request
 // Store it into the queue or just send it
 func HandleRequest(r *http.Request) error {
-	proxyRequest, err := NewProxyRequest(r)
+	proxyRequest, err := proxy.NewProxyRequest(r)
 	if err != nil {
 		return err
 	}
+
+	// Limit the amount of goroutines that can be created
+	asyncLimiter <- struct{}{}
 
 	go WorkProxyRequest(proxyRequest)
 
@@ -69,7 +98,9 @@ func HandleRequest(r *http.Request) error {
 }
 
 // Put the proxy request into the queue or send it if queue is disabled
-func WorkProxyRequest(r *ProxyRequest) {
+func WorkProxyRequest(r *proxy.ProxyRequest) {
+	defer func() { <-asyncLimiter }()
+
 	var err error
 	if worker != nil {
 		if err = worker.Enqueue(r); err == nil {
@@ -85,13 +116,13 @@ func WorkProxyRequest(r *ProxyRequest) {
 }
 
 // Process the ProxyRequest
-func SendProxyRequest(r *ProxyRequest) error {
+func SendProxyRequest(r *proxy.ProxyRequest) error {
 	var err error
 	res := "OK"
 
 	start := time.Now()
 
-	if err = proxy.Do(r); err != nil {
+	if err = client.Do(r); err != nil {
 		res = err.Error()
 	}
 
@@ -108,7 +139,7 @@ func shutdownWorker(ctx context.Context) error {
 	return worker.Shutdown(ctx)
 }
 
-func trackProxyRequestDuration(start time.Time, r *ProxyRequest, res string) {
+func trackProxyRequestDuration(start time.Time, r *proxy.ProxyRequest, res string) {
 	proxyRequestsDuration.
 		WithLabelValues(r.OriginURL, res).
 		Observe(time.Since(start).Seconds())
