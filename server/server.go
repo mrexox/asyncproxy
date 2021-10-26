@@ -44,10 +44,10 @@ func Init(config *cfg.Config) {
 }
 
 // Start workers proxying the requests
-func Start() {
-	ctx, cancel := context.WithCancel(context.Background())
+func Start(forceCtx context.Context) {
+	gracefulCtx, cancel := context.WithCancel(context.Background())
 	if worker != nil {
-		worker.Run(ctx)
+		worker.Run(gracefulCtx, forceCtx)
 	}
 
 	stopWorker = cancel
@@ -110,19 +110,19 @@ func WorkProxyRequest(r *proxy.ProxyRequest) {
 		log.Printf("enqueueing error: %v", err)
 	}
 
-	if err = SendProxyRequest(r); err != nil {
+	if err = SendProxyRequest(context.Background(), r); err != nil {
 		log.Printf("error: %s", err)
 	}
 }
 
 // Process the ProxyRequest
-func SendProxyRequest(r *proxy.ProxyRequest) error {
+func SendProxyRequest(ctx context.Context, r *proxy.ProxyRequest) error {
 	var err error
 	res := "OK"
 
 	start := time.Now()
 
-	if err = client.Do(r); err != nil {
+	if err = client.Do(ctx, r); err != nil {
 		res = err.Error()
 	}
 

@@ -21,6 +21,7 @@ const (
 	selectSQL = `
     SELECT id, method, header, body, origin_url, attempt
     FROM proxy_requests
+    ORDER BY timestamp ASC
     LIMIT 1
     FOR UPDATE
     SKIP LOCKED;
@@ -113,8 +114,7 @@ func (q *PgQueue) EnqueueRequest(r *ProxyRequest, attempt int) error {
 }
 
 // Get request fron the database
-func (q *PgQueue) DequeueRequest() (*ProxyRequest, int, error) {
-	ctx := context.Background()
+func (q *PgQueue) DequeueRequest(ctx context.Context) (*ProxyRequest, int, error) {
 	tx, err := q.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, 0, err

@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"context"
 	"net/http"
 	"testing"
 )
@@ -43,7 +44,7 @@ func TestDo(t *testing.T) {
 
 	// POST request successfully forwarded
 
-	err := proxy.Do(&ProxyRequest{
+	err := proxy.Do(context.Background(), &ProxyRequest{
 		Header:    map[string][]string{},
 		Method:    "POST",
 		Body:      []byte("Body"),

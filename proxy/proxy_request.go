@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -41,7 +42,7 @@ func (pr *ProxyRequest) URL() (*url.URL, error) {
 	return res, nil
 }
 
-func (pr *ProxyRequest) ToHTTPRequest(p *Proxy) (*http.Request, error) {
+func (pr *ProxyRequest) ToHTTPRequest(ctx context.Context, p *Proxy) (*http.Request, error) {
 	var bodyReader io.Reader = bytes.NewReader(pr.Body)
 
 	reqURL, err := pr.URL()
@@ -52,7 +53,9 @@ func (pr *ProxyRequest) ToHTTPRequest(p *Proxy) (*http.Request, error) {
 	reqURL.Host = p.remoteHost
 	reqURL.Scheme = p.remoteScheme
 
-	httpReq, err := http.NewRequest(pr.Method, reqURL.String(), bodyReader)
+	httpReq, err := http.NewRequestWithContext(
+		ctx, pr.Method, reqURL.String(), bodyReader,
+	)
 	if err != nil {
 		return nil, err
 	}

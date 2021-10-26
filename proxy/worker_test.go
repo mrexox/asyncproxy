@@ -1,9 +1,10 @@
 package proxy
 
 import (
+	"context"
+	"errors"
 	"testing"
 
-	"errors"
 	"go.uber.org/ratelimit"
 )
 
@@ -26,7 +27,7 @@ func (t *testQueue) EnqueueRequest(r *ProxyRequest, attempt int) error {
 	return nil
 }
 
-func (t *testQueue) DequeueRequest() (r *ProxyRequest, attempt int, err error) {
+func (t *testQueue) DequeueRequest(ctx context.Context) (r *ProxyRequest, attempt int, err error) {
 	t.dequeued += 1
 
 	r = &ProxyRequest{}
@@ -43,14 +44,15 @@ func TestWork(t *testing.T) {
 		numWorkers: 1,
 		maxRetries: 2,
 		queue:      &q,
-		send: func(r *ProxyRequest) error {
+		doRequest: func(_ context.Context, r *ProxyRequest) error {
 			sendCnt += 1
 			return nil
 		},
 		limiter: ratelimit.New(1),
 	}
 
-	worker.Work()
+	ctx := context.Background()
+	worker.Work(ctx)
 
 	if q.dequeued != 1 {
 		t.Errorf("should have enqueued the request")
@@ -65,11 +67,11 @@ func TestWork(t *testing.T) {
 	q.dequeued = 0
 	q.enqueued = 0
 
-	worker.send = func(r *ProxyRequest) error {
+	worker.doRequest = func(_ context.Context, r *ProxyRequest) error {
 		return errors.New("any kind of error")
 	}
 
-	worker.Work()
+	worker.Work(ctx)
 
 	if q.dequeued != 1 {
 		t.Errorf("should have enqueued the request")
@@ -82,7 +84,7 @@ func TestWork(t *testing.T) {
 	q.dequeued = 0
 	q.enqueued = 0
 
-	worker.Work()
+	worker.Work(ctx)
 	sendCnt = 0
 
 	if sendCnt != 0 {

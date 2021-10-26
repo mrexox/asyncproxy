@@ -11,13 +11,13 @@ import (
 	cfg "github.com/evilmartians/asyncproxy/config"
 )
 
-type sendProxyRequestFunc func(*ProxyRequest) error
+type sendProxyRequestFunc func(context.Context, *ProxyRequest) error
 
 type Worker struct {
 	numWorkers int
 	maxRetries int
 	queue      Queue
-	send       sendProxyRequestFunc
+	doRequest  sendProxyRequestFunc
 	limiter    ratelimit.Limiter
 
 	works sync.WaitGroup
@@ -53,7 +53,7 @@ func NewWorker(config *cfg.Config, sendFunc sendProxyRequestFunc) *Worker {
 		numWorkers: config.Queue.Workers,
 		maxRetries: config.Queue.MaxRetries,
 		queue:      queue,
-		send:       sendFunc,
+		doRequest:  sendFunc,
 		limiter:    ratelimit.New(config.Queue.HandlePerSecond),
 	}
 }
@@ -85,19 +85,19 @@ func (w *Worker) Shutdown(ctx context.Context) error {
 	return w.queue.Shutdown()
 }
 
-func (w *Worker) Run(ctx context.Context) {
+func (w *Worker) Run(gracefulCtx, forceCtx context.Context) {
 	for i := 0; i < w.numWorkers; i++ {
-		go w.concurrentRun(ctx)
+		go w.concurrentRun(gracefulCtx, forceCtx)
 	}
 }
 
-func (w *Worker) concurrentRun(ctx context.Context) {
+func (w *Worker) concurrentRun(gracefulCtx, forceCtx context.Context) {
 	for {
 		select {
-		case <-ctx.Done():
+		case <-gracefulCtx.Done():
 			return
 		default:
-			w.Work()
+			w.Work(forceCtx)
 		}
 	}
 }
@@ -108,13 +108,13 @@ func (w *Worker) Enqueue(r *ProxyRequest) error {
 
 // Dequeues request and sends it to the destination
 // Uses a limiter to balance the outgoing load
-func (w *Worker) Work() {
+func (w *Worker) Work(ctx context.Context) {
 	w.works.Add(1)
 	defer w.works.Done()
 
 	_ = w.limiter.Take() // limit outgoing load
 
-	request, attempt, err := w.queue.DequeueRequest()
+	request, attempt, err := w.queue.DequeueRequest(ctx)
 	if err == EmptyQueueError {
 		time.Sleep(5 * time.Second) // small delay before the next try
 		return
@@ -125,7 +125,7 @@ func (w *Worker) Work() {
 	}
 
 	// Try handling the request once again
-	if err := w.send(request); err != nil {
+	if err := w.doRequest(ctx, request); err != nil {
 		if attempt > w.maxRetries {
 			log.Printf("max attempts exceded: %s", request.String())
 			return

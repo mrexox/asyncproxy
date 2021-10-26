@@ -37,6 +37,8 @@ func init() {
 func main() {
 	log.Println("Starting server...")
 
+	forceCtx, forceShutdownFunc := context.WithCancel(context.Background())
+
 	srv := &http.Server{
 		Addr:         config.Server.Bind,
 		Handler:      asyncProxyHandler{},
@@ -46,7 +48,7 @@ func main() {
 
 	srv.SetKeepAlivesEnabled(false)
 
-	proxyServer.Start()
+	proxyServer.Start(forceCtx)
 
 	// Run metrics server
 	go RunMetricsServer()
@@ -68,10 +70,12 @@ func main() {
 
 	<-signalChan
 	log.Printf("Shutting down gracefully...")
+	go func() {
+		<-signalChan
+		forceShutdownFunc()
+	}()
 
-	gracefulCtx, cancel := context.WithTimeout(
-		context.Background(), config.Server.ShutdownTimeout,
-	)
+	gracefulCtx, cancel := context.WithTimeout(forceCtx, config.Server.ShutdownTimeout)
 	defer cancel()
 
 	if err := srv.Shutdown(gracefulCtx); err != nil {

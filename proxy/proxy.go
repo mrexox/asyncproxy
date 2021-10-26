@@ -58,8 +58,8 @@ func (p *Proxy) Shutdown(ctx context.Context) error {
 }
 
 // Sends the ProxyRequest limiting the number of parallel requests
-func (p *Proxy) Do(r *ProxyRequest) error {
-	httpReq, err := r.ToHTTPRequest(p)
+func (p *Proxy) Do(ctx context.Context, r *ProxyRequest) error {
+	httpReq, err := r.ToHTTPRequest(ctx, p)
 	if err != nil {
 		return fmt.Errorf("request error: %s", err)
 	}
