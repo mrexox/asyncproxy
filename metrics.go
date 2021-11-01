@@ -2,13 +2,13 @@ package main
 
 import (
 	"context"
-	"log"
 	"net/http"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	log "github.com/sirupsen/logrus"
 
 	cfg "github.com/evilmartians/asyncproxy/config"
 	proxy "github.com/evilmartians/asyncproxy/proxy"
@@ -64,7 +64,7 @@ func InitMetrics(config *cfg.Config) {
 
 func RunMetricsServer() {
 	if err := metricsServer.ListenAndServe(); err != http.ErrServerClosed {
-		log.Printf("server error: %v", err)
+		log.WithError(err).Warn("server error")
 	}
 }
 
@@ -94,7 +94,10 @@ func trackRequestDuration(start time.Time, r *http.Request) {
 }
 
 func (m metricsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	log.Printf("<- %s %s (%s)", r.Method, r.RequestURI, r.RemoteAddr)
+	log.WithFields(log.Fields{
+		"ip":  r.RemoteAddr,
+		"uri": r.RequestURI,
+	}).Info("metrics check")
 
 	if r.URL.Path == prometheusPath {
 		handleMetrics(w, r)
