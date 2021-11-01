@@ -7,6 +7,7 @@ require (
 	github.com/lib/pq v1.10.3
 	github.com/pressly/goose v2.7.0+incompatible
 	github.com/prometheus/client_golang v1.11.0
+	github.com/sirupsen/logrus v1.8.1
 	github.com/spf13/viper v1.9.0
 	go.uber.org/ratelimit v0.2.0
 )

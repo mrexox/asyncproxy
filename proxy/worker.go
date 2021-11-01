@@ -2,10 +2,10 @@ package proxy
 
 import (
 	"context"
-	"log"
 	"sync"
 	"time"
 
+	log "github.com/sirupsen/logrus"
 	"go.uber.org/ratelimit"
 
 	cfg "github.com/evilmartians/asyncproxy/config"
@@ -24,11 +24,17 @@ type Worker struct {
 }
 
 func NewWorker(config *cfg.Config, sendFunc sendProxyRequestFunc) *Worker {
+	log.WithFields(log.Fields{
+		"enabled":           config.Queue.Enabled,
+		"workers":           config.Queue.Workers,
+		"handle_per_second": config.Queue.HandlePerSecond,
+		"max_retries":       config.Queue.MaxRetries,
+	}).Info("Initializing worker")
+
 	if !config.Queue.Enabled {
+		log.Warn("(!) Queueing disabled")
 		return nil
 	}
-
-	log.Printf("Queueing enabled")
 
 	queue, err := NewPgQueue(
 		config.Db.ConnectionString,
@@ -39,15 +45,12 @@ func NewWorker(config *cfg.Config, sendFunc sendProxyRequestFunc) *Worker {
 	}
 
 	if config.Queue.Workers < 1 {
-		log.Fatal("workers count cannot be less than 1")
+		log.Fatal("workers must be >= 1")
 	}
 
 	if config.Queue.HandlePerSecond < 1 {
 		log.Fatal("max rps must be >= 1")
 	}
-
-	log.Printf("Worker -- rate limit: %d rps", config.Queue.HandlePerSecond)
-	log.Printf("Worker -- parallelism: %d", config.Queue.Workers)
 
 	return &Worker{
 		numWorkers: config.Queue.Workers,
@@ -60,7 +63,7 @@ func NewWorker(config *cfg.Config, sendFunc sendProxyRequestFunc) *Worker {
 
 // Gracefully stops all goroutines
 func (w *Worker) Shutdown(ctx context.Context) error {
-	log.Printf("Stopping workers...")
+	log.Info("Stopping workers...")
 
 	waitChan := make(chan struct{})
 	go func() {
@@ -120,19 +123,26 @@ func (w *Worker) Work(ctx context.Context) {
 		return
 	}
 	if err != nil {
-		log.Printf("dequeue error: %s", err)
+		log.WithError(err).Warn("dequeue error")
 		return
 	}
 
 	// Try handling the request once again
 	if err := w.doRequest(ctx, request); err != nil {
 		if attempt > w.maxRetries {
-			log.Printf("max attempts exceded: %s", request.String())
+			log.WithFields(log.Fields{
+				"method":  request.Method,
+				"url":     request.OriginURL,
+				"retries": attempt,
+			}).Warn("max attempts exceded")
 			return
 		}
 
 		if err = w.queue.EnqueueRequest(request, attempt+1); err != nil {
-			log.Printf("couldn't retry request: %s", err)
+			log.WithFields(log.Fields{
+				"request": request.String(),
+				"error":   err,
+			}).Warn("couldn't retry request")
 		}
 	}
 }

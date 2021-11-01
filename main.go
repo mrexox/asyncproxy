@@ -2,12 +2,13 @@ package main
 
 import (
 	"context"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 
 	cfg "github.com/evilmartians/asyncproxy/config"
 	proxyServer "github.com/evilmartians/asyncproxy/server"
@@ -18,7 +19,12 @@ type asyncProxyHandler struct{}
 var config *cfg.Config
 
 func init() {
-	log.Println("Reading config...")
+	// Disable colors with LOG_COLOR=false
+	log.SetFormatter(&log.TextFormatter{
+		DisableColors: os.Getenv("LOG_COLOR") == "false",
+	})
+
+	log.Info("Initializing...")
 
 	path, err := os.Getwd()
 	if err != nil {
@@ -32,10 +38,12 @@ func init() {
 
 	InitMetrics(config)
 	proxyServer.Init(config)
+
+	log.Info("Initialization done!")
 }
 
 func main() {
-	log.Println("Starting server...")
+	log.Info("Server starting...")
 
 	forceCtx, forceShutdownFunc := context.WithCancel(context.Background())
 
@@ -56,9 +64,11 @@ func main() {
 	// Run http server
 	go func() {
 		if err := srv.ListenAndServe(); err != http.ErrServerClosed {
-			log.Printf("metrics server error: %v", err)
+			log.WithError(err).Warn("metrics server error")
 		}
 	}()
+
+	log.Info("Server started!")
 
 	// Handle shutdowns gracefully
 	signalChan := make(chan os.Signal, 1)
@@ -69,7 +79,7 @@ func main() {
 	)
 
 	<-signalChan
-	log.Printf("Shutting down gracefully...")
+	log.Info("Shutting down gracefully...")
 	go func() {
 		<-signalChan
 		forceShutdownFunc()
@@ -81,19 +91,19 @@ func main() {
 	if err := srv.Shutdown(gracefulCtx); err != nil {
 		log.Fatal(err)
 	} else {
-		log.Printf("Gracefully stopped server")
+		log.Info("Gracefully stopped server!")
 	}
 
 	if err := proxyServer.Stop(gracefulCtx); err != nil {
 		log.Fatal(err)
 	} else {
-		log.Printf("Gracefully stopped proxy")
+		log.Info("Gracefully stopped proxy!")
 	}
 
 	if err := ShutdownMetricsServer(gracefulCtx); err != nil {
 		log.Fatal(err)
 	} else {
-		log.Printf("Gracefully stopped metrics")
+		log.Info("Gracefully stopped metrics!")
 	}
 }
 
@@ -102,7 +112,11 @@ func (h asyncProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	start := time.Now()
 
-	log.Printf("<- %s %s (%s)", r.Method, r.RequestURI, r.RemoteAddr)
+	log.WithFields(log.Fields{
+		"method": r.Method,
+		"uri":    r.RequestURI,
+		"ip":     r.RemoteAddr,
+	}).Info("received")
 
 	if r.URL.Path == prometheusPath {
 		handleMetrics(w, r)

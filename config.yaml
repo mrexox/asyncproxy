@@ -2,7 +2,7 @@ server:
   bind: :8080
   response_status: 200
   shutdown_timeout: 30s
-  concurrency: 200
+  concurrency: 300
 metrics:
   bind: :8081
   path: /metrics
@@ -12,7 +12,7 @@ proxy:
   num_clients: 700
 queue:
   enabled: true
-  workers: 20
+  workers: 30
   handle_per_second: 30
   max_retries: 1000
 db:

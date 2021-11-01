@@ -3,9 +3,10 @@ package proxy
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
 	"net/url"
+
+	log "github.com/sirupsen/logrus"
 
 	cfg "github.com/evilmartians/asyncproxy/config"
 )
@@ -25,12 +26,15 @@ func NewProxy(config *cfg.Config) *Proxy {
 		log.Fatal(err)
 	}
 
+	log.WithFields(log.Fields{
+		"redirect_url":    fmt.Sprintf("%s://%s", remoteURL.Scheme, remoteURL.Host),
+		"max_open_fd":     config.Proxy.NumClients,
+		"request_timeout": config.Proxy.RequestTimeout,
+	}).Info("Initializing proxy")
+
 	if config.Proxy.NumClients < 1 {
 		log.Fatal("number of clients must be >= 1")
 	}
-
-	log.Printf("Proxy -- redirect url: %s://%s", remoteURL.Scheme, remoteURL.Host)
-	log.Printf("Proxy -- max concurrency: %d", config.Proxy.NumClients)
 
 	return &Proxy{
 		client: &http.Client{
@@ -78,7 +82,10 @@ func (p *Proxy) Do(ctx context.Context, r *ProxyRequest) error {
 // Performs the HTTP requests.
 func (p *Proxy) do(r *http.Request) error {
 	reqURL := r.URL.String()
-	log.Printf("-> %s %s", r.Method, reqURL)
+	log.WithFields(log.Fields{
+		"method": r.Method,
+		"url":    reqURL,
+	}).Info("proxying...")
 
 	resp, err := p.client.Do(r)
 	if resp != nil {
@@ -88,7 +95,11 @@ func (p *Proxy) do(r *http.Request) error {
 		return fmt.Errorf("response error: %s", err)
 	}
 
-	log.Printf("   %s %s %s", r.Method, reqURL, resp.Status)
+	log.WithFields(log.Fields{
+		"method": r.Method,
+		"url":    reqURL,
+		"status": resp.StatusCode,
+	}).Info("...done")
 
 	if resp.StatusCode > 299 {
 		return fmt.Errorf(resp.Status)
