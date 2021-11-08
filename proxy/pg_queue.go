@@ -21,7 +21,7 @@ const (
 	selectSQL = `
     SELECT id, method, header, body, origin_url, attempt
     FROM proxy_requests
-    ORDER BY date_trunc('minute', timestamp) ASC
+    ORDER BY id ASC
     LIMIT 1
     FOR UPDATE
     SKIP LOCKED;
