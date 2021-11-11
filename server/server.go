@@ -31,7 +31,7 @@ type Server struct {
 	asyncLimiter  ratelimit.Limiter
 	asyncRoutines sync.WaitGroup
 
-	// Graceful workers shutdown helper
+	// stopWorker signals all workers to stop
 	stopWorker context.CancelFunc
 
 	// Main worker object to work with proxy requests

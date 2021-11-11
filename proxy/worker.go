@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jpillora/backoff"
 	log "github.com/sirupsen/logrus"
 	"go.uber.org/ratelimit"
 
@@ -19,6 +20,7 @@ type Worker struct {
 	queue      Queue
 	doRequest  sendProxyRequestFunc
 	limiter    ratelimit.Limiter
+	backoff    backoff.Backoff
 
 	works sync.WaitGroup
 }
@@ -58,6 +60,12 @@ func NewWorker(config *cfg.Config, sendFunc sendProxyRequestFunc) *Worker {
 		queue:      queue,
 		doRequest:  sendFunc,
 		limiter:    ratelimit.New(config.Queue.HandlePerSecond),
+		backoff: backoff.Backoff{
+			Min:    10 * time.Millisecond,
+			Max:    5 * time.Second,
+			Factor: 2,
+			Jitter: true,
+		},
 	}
 }
 
@@ -68,7 +76,7 @@ func (w *Worker) Shutdown(ctx context.Context) error {
 	waitChan := make(chan struct{})
 	go func() {
 		w.works.Wait()
-		waitChan <- struct{}{}
+		close(waitChan)
 	}()
 
 	err := func() error {
@@ -95,6 +103,8 @@ func (w *Worker) Run(gracefulCtx, forceCtx context.Context) {
 }
 
 func (w *Worker) concurrentRun(gracefulCtx, forceCtx context.Context) {
+	w.works.Add(1)
+	defer w.works.Done()
 	for {
 		select {
 		case <-gracefulCtx.Done():
@@ -112,20 +122,32 @@ func (w *Worker) Enqueue(r *ProxyRequest) error {
 // Dequeues request and sends it to the destination
 // Uses a limiter to balance the outgoing load
 func (w *Worker) Work(ctx context.Context) {
-	w.works.Add(1)
-	defer w.works.Done()
-
 	_ = w.limiter.Take() // limit outgoing load
 
-	request, attempt, err := w.queue.DequeueRequest(ctx)
-	if err == EmptyQueueError {
-		time.Sleep(5 * time.Second) // small delay before the next try
-		return
+	var (
+		request *ProxyRequest
+		attempt int
+	)
+	for {
+		var err error
+		request, attempt, err = w.queue.DequeueRequest(ctx)
+		if err == nil {
+			break
+		}
+
+		if err != EmptyQueueError {
+			log.WithError(err).Error("dequeue error")
+		}
+
+		select {
+		case <-time.After(w.backoff.Duration()):
+		case <-ctx.Done():
+			log.WithError(ctx.Err()).Warn("worker context is done")
+			return
+		}
 	}
-	if err != nil {
-		log.WithError(err).Warn("dequeue error")
-		return
-	}
+
+	w.backoff.Reset()
 
 	// Try handling the request once again
 	if err := w.doRequest(ctx, request); err != nil {

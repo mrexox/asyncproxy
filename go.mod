@@ -4,6 +4,7 @@ go 1.17
 
 require (
 	github.com/google/uuid v1.3.0
+	github.com/jpillora/backoff v1.0.0
 	github.com/lib/pq v1.10.3
 	github.com/pressly/goose v2.7.0+incompatible
 	github.com/prometheus/client_golang v1.11.0
