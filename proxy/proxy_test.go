@@ -33,7 +33,6 @@ func TestDo(t *testing.T) {
 	}
 
 	proxy := &Proxy{
-		fdLimiter: make(chan struct{}, 1),
 		client: &http.Client{
 			Transport: transport,
 		},

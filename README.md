@@ -38,7 +38,6 @@ PROXY_REMOTE_URL=http://localhost:5001
 |`proxy.remote_url`       | base URL for the destination server (must contain http(s):// prefix) |
 |`proxy.request_timeout`  | the time each requests will be waiting for the response. This controls for how long one file descriptor is borrowed by process. |
 |`proxy.num_clients`      | number of concurrent clients (goroutines) proxying the requests. Limits the number of open file descriptors. |
-|`queue.enabled`          | enable queueing requests: saving data, so service restarts won't lose the unprocessed requests |
 |`queue.workers`          | number of workers processing the queue |
 |`queue.handle_per_second`| Limit for fetching requests from DB |
 |`queue.max_retries`      | Maximum number of attempts to resend the request if the previous wasn't successful |

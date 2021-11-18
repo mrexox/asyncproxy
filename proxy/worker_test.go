@@ -44,15 +44,17 @@ func TestWork(t *testing.T) {
 		numWorkers: 1,
 		maxRetries: 2,
 		queue:      &q,
-		doRequest: func(_ context.Context, r *ProxyRequest) error {
-			sendCnt += 1
-			return nil
-		},
-		limiter: ratelimit.New(1),
+		limiter:    ratelimit.New(1),
+	}
+
+	sendRequest := func(_ context.Context, r *ProxyRequest) error {
+		sendCnt += 1
+		return nil
 	}
 
 	ctx := context.Background()
-	worker.Work(ctx)
+	stopped := make(chan struct{}, 1)
+	worker.Work(ctx, stopped, sendRequest)
 
 	if q.dequeued != 1 {
 		t.Errorf("should have enqueued the request")
@@ -67,11 +69,11 @@ func TestWork(t *testing.T) {
 	q.dequeued = 0
 	q.enqueued = 0
 
-	worker.doRequest = func(_ context.Context, r *ProxyRequest) error {
+	sendRequest = func(_ context.Context, r *ProxyRequest) error {
 		return errors.New("any kind of error")
 	}
 
-	worker.Work(ctx)
+	worker.Work(ctx, stopped, sendRequest)
 
 	if q.dequeued != 1 {
 		t.Errorf("should have enqueued the request")
@@ -84,7 +86,7 @@ func TestWork(t *testing.T) {
 	q.dequeued = 0
 	q.enqueued = 0
 
-	worker.Work(ctx)
+	worker.Work(ctx, stopped, sendRequest)
 	sendCnt = 0
 
 	if sendCnt != 0 {

@@ -18,25 +18,19 @@ type Worker struct {
 	numWorkers int
 	maxRetries int
 	queue      Queue
-	doRequest  sendProxyRequestFunc
 	limiter    ratelimit.Limiter
 	backoff    backoff.Backoff
 
 	works sync.WaitGroup
 }
 
-func NewWorker(config *cfg.Config, sendFunc sendProxyRequestFunc) *Worker {
+func NewWorker(config *cfg.Config) *Worker {
 	log.WithFields(log.Fields{
 		"enabled":           config.Queue.Enabled,
 		"workers":           config.Queue.Workers,
 		"handle_per_second": config.Queue.HandlePerSecond,
 		"max_retries":       config.Queue.MaxRetries,
 	}).Info("Initializing worker")
-
-	if !config.Queue.Enabled {
-		log.Warn("(!) Queueing disabled")
-		return nil
-	}
 
 	queue, err := NewPgQueue(
 		config.Db.ConnectionString,
@@ -58,7 +52,6 @@ func NewWorker(config *cfg.Config, sendFunc sendProxyRequestFunc) *Worker {
 		numWorkers: config.Queue.Workers,
 		maxRetries: config.Queue.MaxRetries,
 		queue:      queue,
-		doRequest:  sendFunc,
 		limiter:    ratelimit.New(config.Queue.HandlePerSecond),
 		backoff: backoff.Backoff{
 			Min:    10 * time.Millisecond,
@@ -96,22 +89,18 @@ func (w *Worker) Shutdown(ctx context.Context) error {
 	return w.queue.Shutdown()
 }
 
-func (w *Worker) Run(gracefulCtx, forceCtx context.Context) {
+func (w *Worker) Run(ctx context.Context, stopped <-chan struct{}, fn sendProxyRequestFunc) {
 	for i := 0; i < w.numWorkers; i++ {
-		go w.concurrentRun(gracefulCtx, forceCtx)
-	}
-}
-
-func (w *Worker) concurrentRun(gracefulCtx, forceCtx context.Context) {
-	w.works.Add(1)
-	defer w.works.Done()
-	for {
-		select {
-		case <-gracefulCtx.Done():
-			return
-		default:
-			w.Work(forceCtx)
-		}
+		go func() {
+			for {
+				select {
+				case <-stopped:
+					return
+				default:
+					w.Work(ctx, stopped, fn)
+				}
+			}
+		}()
 	}
 }
 
@@ -121,7 +110,10 @@ func (w *Worker) Enqueue(r *ProxyRequest) error {
 
 // Dequeues request and sends it to the destination
 // Uses a limiter to balance the outgoing load
-func (w *Worker) Work(ctx context.Context) {
+func (w *Worker) Work(ctx context.Context, stopped <-chan struct{}, fn sendProxyRequestFunc) {
+	w.works.Add(1)
+	defer w.works.Done()
+
 	_ = w.limiter.Take() // limit outgoing load
 
 	var (
@@ -141,6 +133,8 @@ func (w *Worker) Work(ctx context.Context) {
 
 		select {
 		case <-time.After(w.backoff.Duration()):
+		case <-stopped:
+			return
 		case <-ctx.Done():
 			log.WithError(ctx.Err()).Warn("worker context is done")
 			return
@@ -150,7 +144,7 @@ func (w *Worker) Work(ctx context.Context) {
 	w.backoff.Reset()
 
 	// Try handling the request once again
-	if err := w.doRequest(ctx, request); err != nil {
+	if err := fn(ctx, request); err != nil {
 		if attempt > w.maxRetries {
 			log.WithFields(log.Fields{
 				"method":  request.Method,

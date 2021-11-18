@@ -1,11 +1,17 @@
 package proxy
 
+// NOTE: Do not use prepared statements. This service is supposed to
+// be used with pg_bouncer in Transaction pooling mode, which does not
+// support prepared statements.
+// See: https://www.pgbouncer.org/features.html
+
 import (
 	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
+
 	"github.com/google/uuid"
 
 	_ "github.com/lib/pq"
@@ -38,8 +44,6 @@ const (
 
 var (
 	EmptyQueueError = errors.New("queue is empty")
-
-	insertStmt, countTotalStmt *sql.Stmt
 )
 
 type PgQueue struct {
@@ -67,30 +71,15 @@ func NewPgQueue(connString string, maxConns int) (*PgQueue, error) {
 
 	queue := &PgQueue{db: db}
 
-	// Optimize insertion using prepared statements
-	insertStmt, err = db.Prepare(insertSQL)
-	if err != nil {
-		return nil, err
-	}
-
-	// Optimize counting using prepared statements
-	countTotalStmt, err = db.Prepare(countTotalSQL)
-	if err != nil {
-		return nil, err
-	}
-
 	return queue, nil
 }
 
 func (q *PgQueue) Total() (cnt uint64) {
-	_ = countTotalStmt.QueryRow().Scan(&cnt)
+	_ = q.db.QueryRow(countTotalSQL).Scan(&cnt)
 	return
 }
 
 func (q *PgQueue) Shutdown() error {
-	insertStmt.Close()
-	countTotalStmt.Close()
-
 	q.db.Close()
 
 	return nil
@@ -103,8 +92,8 @@ func (q *PgQueue) EnqueueRequest(r *ProxyRequest, attempt int) error {
 		return err
 	}
 
-	_, err = insertStmt.Exec(
-		uuid.New(), r.Method, headers, r.Body, r.OriginURL, attempt,
+	_, err = q.db.Exec(
+		insertSQL, uuid.New(), r.Method, headers, r.Body, r.OriginURL, attempt,
 	)
 	if err != nil {
 		return err

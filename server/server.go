@@ -9,15 +9,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	log "github.com/sirupsen/logrus"
-	"go.uber.org/ratelimit"
 
 	cfg "github.com/evilmartians/asyncproxy/config"
 	proxy "github.com/evilmartians/asyncproxy/proxy"
 )
 
 var (
-	srv *Server
-
 	// Metrics for outgoing requests
 	proxyRequestsDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "http_proxy_response_time_seconds",
@@ -27,55 +24,38 @@ var (
 )
 
 type Server struct {
-	// Concurrency limiter. Limits the number of http-created goroutines
-	asyncLimiter  ratelimit.Limiter
-	asyncRoutines sync.WaitGroup
-
-	// stopWorker signals all workers to stop
-	stopWorker context.CancelFunc
-
 	// Main worker object to work with proxy requests
 	worker *proxy.Worker
 
 	// Main proxy object to handle the requests
 	client *proxy.Proxy
-}
 
-func Init(config *cfg.Config) {
-	srv = NewServer(config)
+	// Track goroutines for the graceful shutdown
+	asyncRoutines sync.WaitGroup
+
+	// stopWorker signals all workers to stop
+	stopWorker context.CancelFunc
 }
 
 // Init everything related to asynchronous proxying
 func NewServer(config *cfg.Config) *Server {
 	log.WithFields(log.Fields{
 		"bind":             config.Server.Bind,
-		"concurrency":      config.Server.Concurrency,
 		"shutdown_timeout": config.Server.ShutdownTimeout,
 	}).Info("Initializing server")
 
 	return &Server{
-		asyncLimiter: ratelimit.New(config.Server.Concurrency),
-		client:       proxy.NewProxy(config),
-		worker:       proxy.NewWorker(config, SendProxyRequest),
+		client: proxy.NewProxy(config),
+		worker: proxy.NewWorker(config),
 	}
-}
-
-func Start(forceCtx context.Context) {
-	srv.Start(forceCtx)
 }
 
 // Start workers proxying the requests
-func (s *Server) Start(forceCtx context.Context) {
-	gracefulCtx, cancel := context.WithCancel(context.Background())
-	if s.worker != nil {
-		s.worker.Run(gracefulCtx, forceCtx)
-	}
+func (s *Server) Start(ctx context.Context) {
+	stopCtx, stop := context.WithCancel(ctx)
+	s.stopWorker = stop
 
-	s.stopWorker = cancel
-}
-
-func Stop(ctx context.Context) error {
-	return srv.Stop(ctx)
+	s.worker.Run(ctx, stopCtx.Done(), s.SendProxyRequest)
 }
 
 // Stop proxying the requests gracefully
@@ -85,7 +65,7 @@ func (s *Server) Stop(ctx context.Context) error {
 	routinesFinished := make(chan struct{})
 	go func() {
 		s.asyncRoutines.Wait()
-		routinesFinished <- struct{}{}
+		close(routinesFinished)
 	}()
 
 	err := func() error {
@@ -103,15 +83,11 @@ func (s *Server) Stop(ctx context.Context) error {
 	}
 
 	s.stopWorker()
-	if err = s.shutdownWorker(ctx); err != nil {
+	if err = s.worker.Shutdown(ctx); err != nil {
 		return err
 	}
 
 	return s.client.Shutdown(ctx)
-}
-
-func HandleRequest(r *http.Request) error {
-	return srv.HandleRequest(r)
 }
 
 // Handle http request: convert it into the proxy request
@@ -122,35 +98,22 @@ func (s *Server) HandleRequest(r *http.Request) error {
 		return err
 	}
 
-	// Limit the amount of goroutines that can be created per second
-	_ = s.asyncLimiter.Take()
-
-	go s.workProxyRequest(proxyRequest)
-
-	return nil
+	return s.workProxyRequest(r.Context(), proxyRequest)
 }
 
 // Put the proxy request into the queue or send it if queue is disabled
-func (s *Server) workProxyRequest(r *proxy.ProxyRequest) {
+func (s *Server) workProxyRequest(ctx context.Context, r *proxy.ProxyRequest) error {
 	s.asyncRoutines.Add(1)
 	defer s.asyncRoutines.Done()
 
 	var err error
-	if s.worker != nil {
-		if err = s.worker.Enqueue(r); err == nil {
-			return
-		}
-
-		log.WithError(err).Warn("enqueueing error")
+	if err = s.worker.Enqueue(r); err == nil {
+		return nil
 	}
 
-	if err = SendProxyRequest(context.Background(), r); err != nil {
-		log.WithError(err).Warn("request error")
-	}
-}
+	log.WithError(err).Warn("enqueueing error, proxying withoud enqueueing")
 
-func SendProxyRequest(ctx context.Context, r *proxy.ProxyRequest) error {
-	return srv.SendProxyRequest(ctx, r)
+	return s.SendProxyRequest(ctx, r)
 }
 
 // Process the ProxyRequest
@@ -167,14 +130,6 @@ func (s *Server) SendProxyRequest(ctx context.Context, r *proxy.ProxyRequest) er
 	trackProxyRequestDuration(start, r, res)
 
 	return err
-}
-
-func (s *Server) shutdownWorker(ctx context.Context) error {
-	if s.worker == nil {
-		return nil
-	}
-
-	return s.worker.Shutdown(ctx)
 }
 
 func trackProxyRequestDuration(start time.Time, r *proxy.ProxyRequest, res string) {

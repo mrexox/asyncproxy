@@ -12,7 +12,6 @@ type Config struct {
 		Bind            string        `mapstructure:"bind"`
 		ResponseStatus  int           `mapstructure:"response_status"`
 		ShutdownTimeout time.Duration `mapstructure:"shutdown_timeout"`
-		Concurrency     int           `mapstructure:"concurrency"`
 	} `mapstructure:"server"`
 
 	Metrics struct {

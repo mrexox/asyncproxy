@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -11,12 +12,13 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	cfg "github.com/evilmartians/asyncproxy/config"
-	proxyServer "github.com/evilmartians/asyncproxy/server"
+	server "github.com/evilmartians/asyncproxy/server"
 )
 
 type asyncProxyHandler struct{}
 
 var config *cfg.Config
+var proxyServer *server.Server
 
 func init() {
 	// Disable colors with LOG_COLOR=false
@@ -36,8 +38,7 @@ func init() {
 		log.Fatal(err)
 	}
 
-	InitMetrics(config)
-	proxyServer.Init(config)
+	proxyServer = server.NewServer(config)
 
 	log.Info("Initialization done!")
 }
@@ -45,26 +46,32 @@ func init() {
 func main() {
 	log.Info("Server starting...")
 
-	forceCtx, forceShutdownFunc := context.WithCancel(context.Background())
+	ctx, forceShutdown := context.WithCancel(context.Background())
 
 	srv := &http.Server{
 		Addr:         config.Server.Bind,
 		Handler:      asyncProxyHandler{},
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 5 * time.Second,
+		BaseContext:  func(_ net.Listener) context.Context { return ctx },
 	}
 
 	srv.SetKeepAlivesEnabled(false)
 
-	proxyServer.Start(forceCtx)
-
 	// Run metrics server
-	go RunMetricsServer()
+	metricsServer := NewMetrics(config)
+	go func() {
+		if err := metricsServer.ListenAndServe(); err != http.ErrServerClosed {
+			log.WithError(err).Warn("metrics server error")
+		}
+	}()
+
+	proxyServer.Start(ctx)
 
 	// Run http server
 	go func() {
 		if err := srv.ListenAndServe(); err != http.ErrServerClosed {
-			log.WithError(err).Warn("metrics server error")
+			log.WithError(err).Warn("server error")
 		}
 	}()
 
@@ -82,10 +89,10 @@ func main() {
 	log.Info("Shutting down gracefully...")
 	go func() {
 		<-signalChan
-		forceShutdownFunc()
+		forceShutdown()
 	}()
 
-	gracefulCtx, cancel := context.WithTimeout(forceCtx, config.Server.ShutdownTimeout)
+	gracefulCtx, cancel := context.WithTimeout(ctx, config.Server.ShutdownTimeout)
 	defer cancel()
 
 	if err := srv.Shutdown(gracefulCtx); err != nil {
@@ -100,7 +107,7 @@ func main() {
 		log.Info("Gracefully stopped proxy!")
 	}
 
-	if err := ShutdownMetricsServer(gracefulCtx); err != nil {
+	if err := metricsServer.Shutdown(gracefulCtx); err != nil {
 		log.Fatal(err)
 	} else {
 		log.Info("Gracefully stopped metrics!")
@@ -118,15 +125,10 @@ func (h asyncProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		"ip":     r.RemoteAddr,
 	}).Info("received")
 
-	if r.URL.Path == prometheusPath {
-		handleMetrics(w, r)
-		return
-	}
-
 	err := proxyServer.HandleRequest(r)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		log.Println(err)
+		log.WithError(err).Warn("proxying error")
 		return
 	}
 

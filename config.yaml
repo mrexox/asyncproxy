@@ -2,7 +2,6 @@ server:
   bind: :8080
   response_status: 200
   shutdown_timeout: 30s
-  concurrency: 300
 metrics:
   bind: :8081
   path: /metrics
@@ -11,10 +10,9 @@ proxy:
   request_timeout: 120s
   num_clients: 700
 queue:
-  enabled: true
   workers: 30
   handle_per_second: 30
   max_retries: 1000
 db:
-  connection_string: 'host=localhost port=5432 user=postgres password=postgres dbname=asyncproxy sslmode=disable'
+  connection_string: 'host=localhost port=5432 user=postgres password=postgres dbname=asyncproxy sslmode=disable binary_parameters=yes'
   max_connections: 2

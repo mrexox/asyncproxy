@@ -15,10 +15,8 @@ import (
 )
 
 var (
-	metricsServer     *http.Server
 	prometheusHandler http.Handler
 	prometheusPath    string
-	queue             proxy.Queue
 
 	requestsCounter = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "http_requests_total",
@@ -32,21 +30,18 @@ var (
 	}, []string{"path"})
 )
 
-type metricsHandler struct{}
+type Metrics struct {
+	server *http.Server
+	queue  proxy.Queue
+}
 
-func InitMetrics(config *cfg.Config) {
+type httpHandler struct{}
+
+func NewMetrics(config *cfg.Config) *Metrics {
 	prometheusHandler = promhttp.Handler()
 	prometheusPath = config.Metrics.Path
 
-	metricsServer = &http.Server{
-		Addr:         config.Metrics.Bind,
-		Handler:      metricsHandler{},
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 5 * time.Second,
-	}
-
-	var err error
-	queue, err = proxy.NewPgQueue(
+	queue, err := proxy.NewPgQueue(
 		config.Db.ConnectionString,
 		config.Db.MaxConnections,
 	)
@@ -60,23 +55,45 @@ func InitMetrics(config *cfg.Config) {
 	}, func() float64 {
 		return float64(queue.Total())
 	})
-}
 
-func RunMetricsServer() {
-	if err := metricsServer.ListenAndServe(); err != http.ErrServerClosed {
-		log.WithError(err).Warn("server error")
+	return &Metrics{
+		server: &http.Server{
+			Addr:         config.Metrics.Bind,
+			Handler:      httpHandler{},
+			ReadTimeout:  5 * time.Second,
+			WriteTimeout: 5 * time.Second,
+		},
+		queue: queue,
 	}
 }
 
-func ShutdownMetricsServer(ctx context.Context) error {
-	err1 := metricsServer.Shutdown(ctx)
-	err2 := queue.Shutdown()
+func (m *Metrics) ListenAndServe() error {
+	return m.server.ListenAndServe()
+}
+
+func (m *Metrics) Shutdown(ctx context.Context) error {
+	err1 := m.server.Shutdown(ctx)
+	err2 := m.queue.Shutdown()
 
 	if err1 != nil {
 		return err1
 	}
 
 	return err2
+}
+
+func (h httpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	log.WithFields(log.Fields{
+		"ip":  r.RemoteAddr,
+		"uri": r.RequestURI,
+	}).Info("metrics check")
+
+	if r.URL.Path != prometheusPath {
+		w.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	handleMetrics(w, r)
 }
 
 func handleMetrics(w http.ResponseWriter, r *http.Request) {
@@ -91,16 +108,4 @@ func trackRequestDuration(start time.Time, r *http.Request) {
 	requestsDuration.
 		WithLabelValues(r.URL.Path).
 		Observe(time.Since(start).Seconds())
-}
-
-func (m metricsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	log.WithFields(log.Fields{
-		"ip":  r.RemoteAddr,
-		"uri": r.RequestURI,
-	}).Info("metrics check")
-
-	if r.URL.Path == prometheusPath {
-		handleMetrics(w, r)
-		return
-	}
 }
