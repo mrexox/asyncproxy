@@ -1,4 +1,4 @@
-[![CircleCI](https://circleci.com/gh/evilmartians/asyncproxy/tree/main.svg?style=shield)](https://circleci.com/gh/evilmartians/asyncproxy/tree/main)
+[![CircleCI](https://circleci.com/gh/evilmartians/asyncproxy/tree/main.svg?style=svg)](https://circleci.com/gh/evilmartians/asyncproxy/tree/main)
 
 # Async Proxy
 > Fast-response middleware that proxies requests asynchronously

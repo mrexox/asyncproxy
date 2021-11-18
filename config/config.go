@@ -26,10 +26,9 @@ type Config struct {
 	} `mapstructure:"proxy"`
 
 	Queue struct {
-		Enabled         bool `mapstructure:"enabled"`
-		Workers         int  `mapstructure:"workers"`
-		HandlePerSecond int  `mapstructure:"handle_per_second"`
-		MaxRetries      int  `mapstructure:"max_retries"`
+		Workers         int `mapstructure:"workers"`
+		HandlePerSecond int `mapstructure:"handle_per_second"`
+		MaxRetries      int `mapstructure:"max_retries"`
 	} `mapstructure:"queue"`
 
 	Db struct {

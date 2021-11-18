@@ -26,7 +26,6 @@ type Worker struct {
 
 func NewWorker(config *cfg.Config) *Worker {
 	log.WithFields(log.Fields{
-		"enabled":           config.Queue.Enabled,
 		"workers":           config.Queue.Workers,
 		"handle_per_second": config.Queue.HandlePerSecond,
 		"max_retries":       config.Queue.MaxRetries,
