@@ -19,7 +19,7 @@ var (
 	proxyRequestsDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "http_proxy_response_time_seconds",
 		Help:    "Proxy request response time.",
-		Buckets: []float64{.001, .005, .01, .025, .05, .1, .5, 1, 2.5, 5, 10, 30},
+		Buckets: []float64{.5, 1, 2.5, 5},
 	}, []string{"path", "status"})
 )
 
@@ -124,6 +124,7 @@ func (s *Server) SendProxyRequest(ctx context.Context, r *proxy.ProxyRequest) er
 	start := time.Now()
 
 	if err = s.client.Do(ctx, r); err != nil {
+		log.WithError(err).Error("proxy error")
 		res = err.Error()
 	}
 

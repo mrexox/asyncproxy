@@ -80,7 +80,7 @@ func (p *Proxy) Do(ctx context.Context, r *ProxyRequest) error {
 
 	httpReq, err := r.ToHTTPRequest(ctx, p)
 	if err != nil {
-		return fmt.Errorf("request error: %s", err)
+		return fmt.Errorf("creating request: %s", err)
 	}
 
 	return p.do(httpReq)
@@ -99,7 +99,7 @@ func (p *Proxy) do(r *http.Request) error {
 		defer resp.Body.Close()
 	}
 	if err != nil {
-		return fmt.Errorf("response error: %s", err)
+		return fmt.Errorf("request error")
 	}
 
 	log.WithFields(log.Fields{
@@ -109,7 +109,7 @@ func (p *Proxy) do(r *http.Request) error {
 	}).Info("...done")
 
 	if resp.StatusCode > 299 {
-		return fmt.Errorf(resp.Status)
+		return fmt.Errorf("response %d", resp.StatusCode)
 	}
 
 	return nil

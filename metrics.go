@@ -26,7 +26,7 @@ var (
 	requestsDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Name:    "http_response_time_seconds",
 		Help:    "Response time.",
-		Buckets: []float64{.001, .005, 0.01, .025, .05, .1, .5, 1, 2.5, 5, 10, 30},
+		Buckets: []float64{.5, 1, 2.5, 5},
 	}, []string{"path"})
 )
 
