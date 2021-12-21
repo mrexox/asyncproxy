@@ -35,6 +35,10 @@ type Server struct {
 
 	// stopWorker signals all workers to stop
 	stopWorker context.CancelFunc
+
+	// If enqueueing is enabled
+	// Can be turned off if database latency is too big
+	enqueueEnabled bool
 }
 
 // Init everything related to asynchronous proxying
@@ -42,11 +46,13 @@ func NewServer(config *cfg.Config) *Server {
 	log.WithFields(log.Fields{
 		"bind":             config.Server.Bind,
 		"shutdown_timeout": config.Server.ShutdownTimeout,
+		"enqueue_enabled":  config.Server.EnqueueEnabled,
 	}).Info("Initializing server")
 
 	return &Server{
-		client: proxy.NewProxy(config),
-		worker: proxy.NewWorker(config),
+		client:         proxy.NewProxy(config),
+		worker:         proxy.NewWorker(config),
+		enqueueEnabled: config.Server.EnqueueEnabled,
 	}
 }
 
@@ -105,6 +111,10 @@ func (s *Server) HandleRequest(r *http.Request) error {
 func (s *Server) workProxyRequest(ctx context.Context, r *proxy.ProxyRequest) error {
 	s.asyncRoutines.Add(1)
 	defer s.asyncRoutines.Done()
+
+	if !s.enqueueEnabled {
+		return s.SendProxyRequest(ctx, r)
+	}
 
 	var err error
 	if err = s.worker.Enqueue(r); err == nil {

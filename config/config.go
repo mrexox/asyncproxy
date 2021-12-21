@@ -12,6 +12,7 @@ type Config struct {
 		Bind            string        `mapstructure:"bind"`
 		ResponseStatus  int           `mapstructure:"response_status"`
 		ShutdownTimeout time.Duration `mapstructure:"shutdown_timeout"`
+		EnqueueEnabled  bool          `mapstructure:"enqueue_enabled"`
 	} `mapstructure:"server"`
 
 	Metrics struct {

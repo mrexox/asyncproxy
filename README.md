@@ -35,6 +35,7 @@ PROXY_REMOTE_URL=http://localhost:5001
 |`server.bind`            | binding port for the HTTP server. |
 |`server.response_status` | the return code for incoming requests. |
 |`server.shutdown_timeout`| the time you give the service to complete the requests and gracefully shutdown |
+|`server.enqueue_enabled` | if asyncproxy should enqueue requests (`true`) or proxy them without enqueueing (`false`) |
 |`metrics.path`           | URI for the Prometheus metrics exported. |
 |`metrics.bind`           | binding port for the metrics server. |
 |`proxy.remote_url`       | base URL for the destination server (must contain http(s):// prefix) |
