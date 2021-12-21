@@ -45,6 +45,7 @@ PROXY_REMOTE_URL=http://localhost:5001
 |`queue.max_retries`      | Maximum number of attempts to resend the request if the previous wasn't successful |
 |`db.connection_string`   | database connection string |
 |`db.max_connections`     | max open connections to database allowed |
+|`db.use_index`           | whether to query database with index scan or seq scan |
 
 ### Configuration aspects
 

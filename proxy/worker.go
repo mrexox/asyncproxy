@@ -31,10 +31,7 @@ func NewWorker(config *cfg.Config) *Worker {
 		"max_retries":       config.Queue.MaxRetries,
 	}).Info("Initializing worker")
 
-	queue, err := NewPgQueue(
-		config.Db.ConnectionString,
-		config.Db.MaxConnections,
-	)
+	queue, err := NewPgQueue(config)
 	if err != nil {
 		log.Fatal(err)
 	}

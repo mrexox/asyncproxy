@@ -34,6 +34,7 @@ type Config struct {
 	Db struct {
 		ConnectionString string `mapstructure:"connection_string"`
 		MaxConnections   int    `mapstructure:"max_connections"`
+		UseIndex         bool   `mapstructure:"use_index"`
 	} `mapstructure:"db"`
 }
 

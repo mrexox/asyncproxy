@@ -41,10 +41,7 @@ func NewMetrics(config *cfg.Config) *Metrics {
 	prometheusHandler = promhttp.Handler()
 	prometheusPath = config.Metrics.Path
 
-	queue, err := proxy.NewPgQueue(
-		config.Db.ConnectionString,
-		config.Db.MaxConnections,
-	)
+	queue, err := proxy.NewPgQueue(config)
 	if err != nil {
 		log.Fatal(err)
 	}

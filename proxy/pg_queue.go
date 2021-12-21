@@ -13,6 +13,9 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	log "github.com/sirupsen/logrus"
+
+	cfg "github.com/evilmartians/asyncproxy/config"
 
 	_ "github.com/lib/pq"
 )
@@ -24,10 +27,18 @@ const (
     ) VALUES (now(), $1, $2, $3, $4, $5, $6);
   `
 
-	selectSQL = `
+	selectWithIndexSQL = `
     SELECT id, method, header, body, origin_url, attempt
     FROM proxy_requests
     ORDER BY date_trunc('minute', timestamp) ASC
+    LIMIT 1
+    FOR UPDATE
+    SKIP LOCKED;
+  `
+
+	selectWithoutIndexSQL = `
+    SELECT id, method, header, body, origin_url, attempt
+    FROM proxy_requests
     LIMIT 1
     FOR UPDATE
     SKIP LOCKED;
@@ -43,7 +54,8 @@ const (
 )
 
 var (
-	EmptyQueueError = errors.New("queue is empty")
+	EmptyQueueError        = errors.New("queue is empty")
+	querySQL        string = selectWithIndexSQL
 )
 
 type PgQueue struct {
@@ -56,13 +68,24 @@ type record struct {
 	attempt int
 }
 
-func NewPgQueue(connString string, maxConns int) (*PgQueue, error) {
-	db, err := sql.Open("postgres", connString)
+func NewPgQueue(config *cfg.Config) (*PgQueue, error) {
+	db, err := sql.Open("postgres", config.Db.ConnectionString)
 	if err != nil {
 		return nil, err
 	}
 
-	db.SetMaxOpenConns(maxConns)
+	db.SetMaxOpenConns(config.Db.MaxConnections)
+
+	if config.Db.UseIndex {
+		querySQL = selectWithIndexSQL
+	} else {
+		querySQL = selectWithoutIndexSQL
+	}
+
+	log.WithFields(log.Fields{
+		"max_connection": config.Db.MaxConnections,
+		"using_index":    config.Db.UseIndex,
+	}).Info("Initializing postgresql")
 
 	err = db.Ping()
 	if err != nil {
@@ -146,7 +169,7 @@ func (q *PgQueue) selectOne(ctx context.Context, tx *sql.Tx) (record, error) {
 		attempt      int
 	)
 
-	row := tx.QueryRowContext(ctx, selectSQL)
+	row := tx.QueryRowContext(ctx, querySQL)
 
 	err = row.Scan(
 		&id,
