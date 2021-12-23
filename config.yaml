@@ -3,6 +3,7 @@ server:
   response_status: 200
   shutdown_timeout: 30s
   enqueue_enabled: true
+  enqueue_rate: 30
 metrics:
   bind: :8081
   path: /metrics

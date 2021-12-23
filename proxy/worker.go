@@ -7,7 +7,7 @@ import (
 
 	"github.com/jpillora/backoff"
 	log "github.com/sirupsen/logrus"
-	"go.uber.org/ratelimit"
+	"golang.org/x/time/rate"
 
 	cfg "github.com/evilmartians/asyncproxy/config"
 )
@@ -18,7 +18,7 @@ type Worker struct {
 	numWorkers int
 	maxRetries int
 	queue      Queue
-	limiter    ratelimit.Limiter
+	limiter    *rate.Limiter
 	backoff    backoff.Backoff
 
 	works sync.WaitGroup
@@ -48,7 +48,7 @@ func NewWorker(config *cfg.Config) *Worker {
 		numWorkers: config.Queue.Workers,
 		maxRetries: config.Queue.MaxRetries,
 		queue:      queue,
-		limiter:    ratelimit.New(config.Queue.HandlePerSecond),
+		limiter:    rate.NewLimiter(rate.Limit(config.Queue.HandlePerSecond), config.Queue.HandlePerSecond),
 		backoff: backoff.Backoff{
 			Min:    10 * time.Millisecond,
 			Max:    5 * time.Second,
@@ -110,7 +110,11 @@ func (w *Worker) Work(ctx context.Context, stopped <-chan struct{}, fn sendProxy
 	w.works.Add(1)
 	defer w.works.Done()
 
-	_ = w.limiter.Take() // limit outgoing load
+	err := w.limiter.Wait(ctx) // limit outgoing load
+	if err != nil {
+		log.WithError(err).Error("rate limit error")
+		return
+	}
 
 	var (
 		request *ProxyRequest

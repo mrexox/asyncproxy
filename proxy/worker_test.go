@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"go.uber.org/ratelimit"
+	"golang.org/x/time/rate"
 )
 
 type testQueue struct {
@@ -44,7 +44,7 @@ func TestWork(t *testing.T) {
 		numWorkers: 1,
 		maxRetries: 2,
 		queue:      &q,
-		limiter:    ratelimit.New(1),
+		limiter:    rate.NewLimiter(rate.Limit(15), 15),
 	}
 
 	sendRequest := func(_ context.Context, r *ProxyRequest) error {

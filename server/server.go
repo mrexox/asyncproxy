@@ -9,6 +9,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	log "github.com/sirupsen/logrus"
+	"golang.org/x/time/rate"
 
 	cfg "github.com/evilmartians/asyncproxy/config"
 	proxy "github.com/evilmartians/asyncproxy/proxy"
@@ -36,6 +37,9 @@ type Server struct {
 	// stopWorker signals all workers to stop
 	stopWorker context.CancelFunc
 
+	// Rate limiter to deternime when to start using the database
+	rateLimiter *rate.Limiter
+
 	// If enqueueing is enabled
 	// Can be turned off if database latency is too big
 	enqueueEnabled bool
@@ -47,12 +51,14 @@ func NewServer(config *cfg.Config) *Server {
 		"bind":             config.Server.Bind,
 		"shutdown_timeout": config.Server.ShutdownTimeout,
 		"enqueue_enabled":  config.Server.EnqueueEnabled,
+		"enqueue_rate":     config.Server.EnqueueRate,
 	}).Info("Initializing server")
 
 	return &Server{
 		client:         proxy.NewProxy(config),
 		worker:         proxy.NewWorker(config),
 		enqueueEnabled: config.Server.EnqueueEnabled,
+		rateLimiter:    rate.NewLimiter(rate.Limit(config.Server.EnqueueRate), config.Server.EnqueueRate),
 	}
 }
 
@@ -112,7 +118,7 @@ func (s *Server) workProxyRequest(ctx context.Context, r *proxy.ProxyRequest) er
 	s.asyncRoutines.Add(1)
 	defer s.asyncRoutines.Done()
 
-	if !s.enqueueEnabled {
+	if !s.enqueueEnabled || s.rateLimiter.Allow() {
 		return s.SendProxyRequest(ctx, r)
 	}
 
