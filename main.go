@@ -47,6 +47,7 @@ func main() {
 	log.Info("Server starting...")
 
 	ctx, forceShutdown := context.WithCancel(context.Background())
+	defer forceShutdown()
 
 	srv := &http.Server{
 		Addr:         config.Server.Bind,
