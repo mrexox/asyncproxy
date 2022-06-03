@@ -1,4 +1,4 @@
-package proxy
+package worker
 
 import (
 	"context"
@@ -12,9 +12,9 @@ import (
 	cfg "github.com/evilmartians/asyncproxy/config"
 )
 
-// Proxy handles proxy requests
+// Client performs the requests
 // It controls the number of parallel requests made
-type Proxy struct {
+type Client struct {
 	client *http.Client
 
 	openRequests sync.WaitGroup
@@ -22,7 +22,7 @@ type Proxy struct {
 	remoteHost, remoteScheme string
 }
 
-func NewProxy(config *cfg.Config) *Proxy {
+func NewClient(config *cfg.Config) *Client {
 	remoteURL, err := url.Parse(config.Proxy.RemoteUrl)
 	if err != nil {
 		log.Fatal(err)
@@ -44,7 +44,7 @@ func NewProxy(config *cfg.Config) *Proxy {
 	transport.MaxConnsPerHost = config.Proxy.NumClients
 	transport.MaxIdleConnsPerHost = config.Proxy.NumClients
 
-	return &Proxy{
+	return &Client{
 		client: &http.Client{
 			Timeout:   config.Proxy.RequestTimeout,
 			Transport: transport,
@@ -56,10 +56,10 @@ func NewProxy(config *cfg.Config) *Proxy {
 
 // Shutdown gracefully waits for running requests to finish
 // or returns an error if context was cancelled.
-func (p *Proxy) Shutdown(ctx context.Context) error {
+func (c *Client) Shutdown(ctx context.Context) error {
 	allRequestsClosed := make(chan struct{})
 	go func() {
-		p.openRequests.Wait()
+		c.openRequests.Wait()
 		close(allRequestsClosed)
 	}()
 
@@ -73,28 +73,28 @@ func (p *Proxy) Shutdown(ctx context.Context) error {
 	}
 }
 
-// Sends the ProxyRequest limiting the number of parallel requests
-func (p *Proxy) Do(ctx context.Context, r *ProxyRequest) error {
-	p.openRequests.Add(1)
-	defer p.openRequests.Done()
+// Sends the Request limiting the number of parallel requests
+func (c *Client) Do(ctx context.Context, r *Request) error {
+	c.openRequests.Add(1)
+	defer c.openRequests.Done()
 
-	httpReq, err := r.ToHTTPRequest(ctx, p)
+	httpReq, err := r.ToHTTPRequest(ctx, c.remoteHost, c.remoteScheme)
 	if err != nil {
 		return fmt.Errorf("creating request: %s", err)
 	}
 
-	return p.do(httpReq)
+	return c.do(httpReq)
 }
 
 // Performs the HTTP requests.
-func (p *Proxy) do(r *http.Request) error {
+func (c *Client) do(r *http.Request) error {
 	reqURL := r.URL.String()
 	log.WithFields(log.Fields{
 		"method": r.Method,
 		"url":    reqURL,
 	}).Info("proxying...")
 
-	resp, err := p.client.Do(r)
+	resp, err := c.client.Do(r)
 	if resp != nil {
 		defer resp.Body.Close()
 	}

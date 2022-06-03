@@ -2,155 +2,70 @@ package server
 
 import (
 	"context"
+	"net"
 	"net/http"
-	"sync"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 	log "github.com/sirupsen/logrus"
-	"golang.org/x/time/rate"
 
-	cfg "github.com/evilmartians/asyncproxy/config"
-	proxy "github.com/evilmartians/asyncproxy/proxy"
-)
-
-var (
-	// Metrics for outgoing requests
-	proxyRequestsDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
-		Name:    "http_proxy_response_time_seconds",
-		Help:    "Proxy request response time.",
-		Buckets: []float64{.5, 1, 2.5, 5},
-	}, []string{"path", "status"})
+	"github.com/evilmartians/asyncproxy/config"
 )
 
 type Server struct {
-	// Main worker object to work with proxy requests
-	worker *proxy.Worker
+	Mux *http.ServeMux
 
-	// Main proxy object to handle the requests
-	client *proxy.Proxy
-
-	// Track goroutines for the graceful shutdown
-	asyncRoutines sync.WaitGroup
-
-	// stopWorker signals all workers to stop
-	stopWorker context.CancelFunc
-
-	// Rate limiter to deternime when to start using the database
-	rateLimiter *rate.Limiter
-
-	// If enqueueing is enabled
-	// Can be turned off if database latency is too big
-	enqueueEnabled bool
+	http    *http.Server
+	metrics *Metrics
 }
 
-// Init everything related to asynchronous proxying
-func NewServer(config *cfg.Config) *Server {
+func NewServer(cfg *config.Config, ctx context.Context) Server {
 	log.WithFields(log.Fields{
-		"bind":             config.Server.Bind,
-		"shutdown_timeout": config.Server.ShutdownTimeout,
-		"enqueue_enabled":  config.Server.EnqueueEnabled,
-		"enqueue_rate":     config.Server.EnqueueRate,
+		"bind":             cfg.Server.Bind,
+		"shutdown_timeout": cfg.Server.ShutdownTimeout,
 	}).Info("Initializing server")
 
-	return &Server{
-		client:         proxy.NewProxy(config),
-		worker:         proxy.NewWorker(config),
-		enqueueEnabled: config.Server.EnqueueEnabled,
-		rateLimiter:    rate.NewLimiter(rate.Limit(config.Server.EnqueueRate), config.Server.EnqueueRate),
+	mux := http.NewServeMux()
+
+	httpServer := &http.Server{
+		Addr:         cfg.Server.Bind,
+		Handler:      mux,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 5 * time.Second,
+		BaseContext:  func(_ net.Listener) context.Context { return ctx },
+	}
+
+	httpServer.SetKeepAlivesEnabled(false)
+
+	return Server{
+		Mux:     mux,
+		http:    httpServer,
+		metrics: NewMetrics(cfg),
 	}
 }
 
-// Start workers proxying the requests
-func (s *Server) Start(ctx context.Context) {
-	stopCtx, stop := context.WithCancel(ctx)
-	s.stopWorker = stop
-
-	s.worker.Run(ctx, stopCtx.Done(), s.SendProxyRequest)
-}
-
-// Stop proxying the requests gracefully
-func (s *Server) Stop(ctx context.Context) error {
-	log.Info("Stopping proxying...")
-
-	routinesFinished := make(chan struct{})
+func (s Server) Start() {
+	s.metrics.Start()
 	go func() {
-		s.asyncRoutines.Wait()
-		close(routinesFinished)
-	}()
-
-	err := func() error {
-		for {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-routinesFinished:
-				return nil
-			}
+		if err := s.http.ListenAndServe(); err != http.ErrServerClosed {
+			log.WithError(err).Warn("server error")
 		}
 	}()
-	if err != nil {
-		return err
-	}
-
-	s.stopWorker()
-	if err = s.worker.Shutdown(ctx); err != nil {
-		return err
-	}
-
-	return s.client.Shutdown(ctx)
 }
 
-// Handle http request: convert it into the proxy request
-// Store it into the queue or just send it
-func (s *Server) HandleRequest(r *http.Request) error {
-	proxyRequest, err := proxy.NewProxyRequest(r)
-	if err != nil {
-		return err
+func (s Server) Stop(ctx context.Context) {
+	if err := s.http.Shutdown(ctx); err != nil {
+		log.Fatal(err)
+	} else {
+		log.Info("Gracefully stopped server!")
 	}
 
-	return s.workProxyRequest(r.Context(), proxyRequest)
+	if err := s.metrics.Shutdown(ctx); err != nil {
+		log.Fatal(err)
+	} else {
+		log.Info("Gracefully stopped metrics!")
+	}
 }
 
-// Put the proxy request into the queue or send it if queue is disabled
-func (s *Server) workProxyRequest(ctx context.Context, r *proxy.ProxyRequest) error {
-	s.asyncRoutines.Add(1)
-	defer s.asyncRoutines.Done()
-
-	if !s.enqueueEnabled || s.rateLimiter.Allow() {
-		return s.SendProxyRequest(ctx, r)
-	}
-
-	var err error
-	if err = s.worker.Enqueue(r); err == nil {
-		return nil
-	}
-
-	log.WithError(err).Warn("enqueueing error, proxying withoud enqueueing")
-
-	return s.SendProxyRequest(ctx, r)
-}
-
-// Process the ProxyRequest
-func (s *Server) SendProxyRequest(ctx context.Context, r *proxy.ProxyRequest) error {
-	var err error
-	res := "OK"
-
-	start := time.Now()
-
-	if err = s.client.Do(ctx, r); err != nil {
-		log.WithError(err).Error("proxy error")
-		res = err.Error()
-	}
-
-	trackProxyRequestDuration(start, r, res)
-
-	return err
-}
-
-func trackProxyRequestDuration(start time.Time, r *proxy.ProxyRequest, res string) {
-	proxyRequestsDuration.
-		WithLabelValues(r.OriginURL, res).
-		Observe(time.Since(start).Seconds())
+func (s Server) MetricsMiddleware(next http.Handler) http.Handler {
+	return s.metrics.Middleware(next)
 }

@@ -1,4 +1,4 @@
-package proxy
+package worker
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 	cfg "github.com/evilmartians/asyncproxy/config"
 )
 
-type sendProxyRequestFunc func(context.Context, *ProxyRequest) error
+type sendProxyRequestFunc func(context.Context, *Request) error
 
 type Worker struct {
 	numWorkers int
@@ -100,7 +100,7 @@ func (w *Worker) Run(ctx context.Context, stopped <-chan struct{}, fn sendProxyR
 	}
 }
 
-func (w *Worker) Enqueue(r *ProxyRequest) error {
+func (w *Worker) Enqueue(r *Request) error {
 	return w.queue.EnqueueRequest(r, 1)
 }
 
@@ -117,7 +117,7 @@ func (w *Worker) Work(ctx context.Context, stopped <-chan struct{}, fn sendProxy
 	}
 
 	var (
-		request *ProxyRequest
+		request *Request
 		attempt int
 	)
 	for {

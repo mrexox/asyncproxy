@@ -1,4 +1,4 @@
-package proxy
+package worker
 
 import (
 	"context"
@@ -21,16 +21,16 @@ func (t *testQueue) Shutdown() error {
 	return nil
 }
 
-func (t *testQueue) EnqueueRequest(r *ProxyRequest, attempt int) error {
+func (t *testQueue) EnqueueRequest(r *Request, attempt int) error {
 	t.enqueued += 1
 
 	return nil
 }
 
-func (t *testQueue) DequeueRequest(ctx context.Context) (r *ProxyRequest, attempt int, err error) {
+func (t *testQueue) DequeueRequest(ctx context.Context) (r *Request, attempt int, err error) {
 	t.dequeued += 1
 
-	r = &ProxyRequest{}
+	r = &Request{}
 	attempt = 2
 
 	return
@@ -47,7 +47,7 @@ func TestWork(t *testing.T) {
 		limiter:    rate.NewLimiter(rate.Limit(15), 15),
 	}
 
-	sendRequest := func(_ context.Context, r *ProxyRequest) error {
+	sendRequest := func(_ context.Context, r *Request) error {
 		sendCnt += 1
 		return nil
 	}
@@ -69,7 +69,7 @@ func TestWork(t *testing.T) {
 	q.dequeued = 0
 	q.enqueued = 0
 
-	sendRequest = func(_ context.Context, r *ProxyRequest) error {
+	sendRequest = func(_ context.Context, r *Request) error {
 		return errors.New("any kind of error")
 	}
 

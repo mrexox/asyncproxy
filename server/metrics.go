@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"context"
@@ -10,8 +10,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	log "github.com/sirupsen/logrus"
 
-	cfg "github.com/evilmartians/asyncproxy/config"
-	proxy "github.com/evilmartians/asyncproxy/proxy"
+	"github.com/evilmartians/asyncproxy/config"
+	"github.com/evilmartians/asyncproxy/internal/worker"
 )
 
 var (
@@ -32,16 +32,16 @@ var (
 
 type Metrics struct {
 	server *http.Server
-	queue  proxy.Queue
+	queue  worker.Queue
 }
 
 type httpHandler struct{}
 
-func NewMetrics(config *cfg.Config) *Metrics {
+func NewMetrics(cfg *config.Config) *Metrics {
 	prometheusHandler = promhttp.Handler()
-	prometheusPath = config.Metrics.Path
+	prometheusPath = cfg.Metrics.Path
 
-	queue, err := proxy.NewPgQueue(config)
+	queue, err := worker.NewPgQueue(cfg)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -55,7 +55,7 @@ func NewMetrics(config *cfg.Config) *Metrics {
 
 	return &Metrics{
 		server: &http.Server{
-			Addr:         config.Metrics.Bind,
+			Addr:         cfg.Metrics.Bind,
 			Handler:      httpHandler{},
 			ReadTimeout:  5 * time.Second,
 			WriteTimeout: 5 * time.Second,
@@ -64,8 +64,12 @@ func NewMetrics(config *cfg.Config) *Metrics {
 	}
 }
 
-func (m *Metrics) ListenAndServe() error {
-	return m.server.ListenAndServe()
+func (m *Metrics) Start() {
+	go func() {
+		if err := m.server.ListenAndServe(); err != http.ErrServerClosed {
+			log.WithError(err).Warn("metrics error")
+		}
+	}()
 }
 
 func (m *Metrics) Shutdown(ctx context.Context) error {
@@ -91,6 +95,16 @@ func (h httpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	handleMetrics(w, r)
+}
+
+func (m *Metrics) Middleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		trackRequest(r)
+
+		start := time.Now()
+		next.ServeHTTP(w, r)
+		trackRequestDuration(start, r)
+	})
 }
 
 func handleMetrics(w http.ResponseWriter, r *http.Request) {

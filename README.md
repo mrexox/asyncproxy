@@ -1,6 +1,5 @@
-[![CircleCI](https://circleci.com/gh/evilmartians/asyncproxy/tree/main.svg?style=svg)](https://circleci.com/gh/evilmartians/asyncproxy/tree/main)
-
 # Async Proxy
+
 > Fast-response middleware that proxies requests asynchronously
 
 This service Helps proxying requests with the speed Golang can provide. It immediately returns the response, so the sender thinks request was handled, and proxies it to other side asynchronously.

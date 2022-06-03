@@ -1,4 +1,4 @@
-package proxy
+package worker
 
 import (
 	"context"
@@ -32,7 +32,7 @@ func TestDo(t *testing.T) {
 		},
 	}
 
-	proxy := &Proxy{
+	client := &Client{
 		client: &http.Client{
 			Transport: transport,
 		},
@@ -43,7 +43,7 @@ func TestDo(t *testing.T) {
 
 	// POST request successfully forwarded
 
-	err := proxy.Do(context.Background(), &ProxyRequest{
+	err := client.Do(context.Background(), &Request{
 		Header:    map[string][]string{},
 		Method:    "POST",
 		Body:      []byte("Body"),

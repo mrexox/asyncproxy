@@ -1,4 +1,4 @@
-package proxy
+package worker
 
 import (
 	"bytes"
@@ -12,20 +12,20 @@ import (
 
 // Need to store HTTP request properties to allow goroutines handle
 // them asynchronously and thread-safe.
-type ProxyRequest struct {
+type Request struct {
 	Header    http.Header
 	Method    string
 	Body      []byte
 	OriginURL string
 }
 
-func NewProxyRequest(r *http.Request) (*ProxyRequest, error) {
+func NewRequest(r *http.Request) (*Request, error) {
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		return nil, err
 	}
 
-	return &ProxyRequest{
+	return &Request{
 		Header:    r.Header.Clone(),
 		Method:    r.Method,
 		Body:      body,
@@ -33,8 +33,8 @@ func NewProxyRequest(r *http.Request) (*ProxyRequest, error) {
 	}, nil
 }
 
-func (pr *ProxyRequest) URL() (*url.URL, error) {
-	res, err := url.Parse(pr.OriginURL)
+func (r *Request) URL() (*url.URL, error) {
+	res, err := url.Parse(r.OriginURL)
 	if err != nil {
 		return nil, err
 	}
@@ -42,30 +42,30 @@ func (pr *ProxyRequest) URL() (*url.URL, error) {
 	return res, nil
 }
 
-func (pr *ProxyRequest) ToHTTPRequest(ctx context.Context, p *Proxy) (*http.Request, error) {
-	var bodyReader io.Reader = bytes.NewReader(pr.Body)
+func (r *Request) ToHTTPRequest(ctx context.Context, host, scheme string) (*http.Request, error) {
+	var bodyReader io.Reader = bytes.NewReader(r.Body)
 
-	reqURL, err := pr.URL()
+	reqURL, err := r.URL()
 	if err != nil {
 		return nil, err
 	}
 
-	reqURL.Host = p.remoteHost
-	reqURL.Scheme = p.remoteScheme
+	reqURL.Host = host
+	reqURL.Scheme = scheme
 
 	httpReq, err := http.NewRequestWithContext(
-		ctx, pr.Method, reqURL.String(), bodyReader,
+		ctx, r.Method, reqURL.String(), bodyReader,
 	)
 	if err != nil {
 		return nil, err
 	}
 
-	httpReq.Header = pr.Header
+	httpReq.Header = r.Header
 	httpReq.Close = true
 
 	return httpReq, nil
 }
 
-func (pr *ProxyRequest) String() string {
-	return fmt.Sprintf("%s %s", pr.Method, pr.OriginURL)
+func (r *Request) String() string {
+	return fmt.Sprintf("%s %s", r.Method, r.OriginURL)
 }

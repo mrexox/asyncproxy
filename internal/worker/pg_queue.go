@@ -1,4 +1,4 @@
-package proxy
+package worker
 
 // NOTE: Do not use prepared statements. This service is supposed to
 // be used with pg_bouncer in Transaction pooling mode, which does not
@@ -63,7 +63,7 @@ type PgQueue struct {
 }
 
 type record struct {
-	request *ProxyRequest
+	request *Request
 	id      string
 	attempt int
 }
@@ -109,7 +109,7 @@ func (q *PgQueue) Shutdown() error {
 }
 
 // Put request into the database
-func (q *PgQueue) EnqueueRequest(r *ProxyRequest, attempt int) error {
+func (q *PgQueue) EnqueueRequest(r *Request, attempt int) error {
 	headers, err := json.Marshal(r.Header)
 	if err != nil {
 		return err
@@ -126,7 +126,7 @@ func (q *PgQueue) EnqueueRequest(r *ProxyRequest, attempt int) error {
 }
 
 // Get request fron the database
-func (q *PgQueue) DequeueRequest(ctx context.Context) (*ProxyRequest, int, error) {
+func (q *PgQueue) DequeueRequest(ctx context.Context) (*Request, int, error) {
 	tx, err := q.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, 0, err
@@ -164,7 +164,7 @@ func (q *PgQueue) selectOne(ctx context.Context, tx *sql.Tx) (record, error) {
 	var (
 		id           string
 		headers      []byte
-		proxyRequest ProxyRequest
+		proxyRequest Request
 		err          error
 		attempt      int
 	)
